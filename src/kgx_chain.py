@@ -59,13 +59,11 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages(
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template("{page_content}")
 
 
-def _format_chat_history(chat_history: List[Tuple[str, str]],response_data: dict) -> List:
+def _format_chat_history(chat_history: List[Tuple[str, str]]) -> List:
     buffer = []
-    print("reponse",response_data)
-    if response_data.get("append_to_chat", True):
-        for human, ai in chat_history:
-            buffer.append(HumanMessage(content=human))
-            buffer.append(AIMessage(content=ai))
+    for human, ai in chat_history:
+        buffer.append(HumanMessage(content=human))
+        buffer.append(AIMessage(content=ai))
     return buffer
 
 
@@ -232,7 +230,7 @@ def init_concept_chain():
         {
             "input": lambda x: x["input"],
 
-            "chat_history": lambda x: _format_chat_history(x['chat_history'],{"append_to_chat": True}),
+            "chat_history": lambda x: _format_chat_history(x['chat_history']),
             "context": extract_concepts | get_studies_and_variables | StrOutputParser()
 
 
@@ -248,10 +246,7 @@ def init_concept_chain():
             ANSWER_PROMPT | llm | StrOutputParser()
         ),
         # If no studies from the graph, and empty context respond with static text
-        RunnableLambda(lambda x: {"response":"No studies were found to answer the query.", 
-                                  "append_to_chat": False})| RunnableLambda(lambda x: x["response"]) | StrOutputParser()| StrOutputParser()
-       
-       
+        RunnableLambda(lambda x: "No studies were found to answer the query."),
     )
 
     qachain = _inputs | answer_generation_chain
