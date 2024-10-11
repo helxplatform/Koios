@@ -249,7 +249,8 @@ def init_concept_chain():
         ),
         # If no studies from the graph, and empty context respond with static text
         RunnableLambda(lambda x: {"response":"No studies were found to answer the query.", 
-                                  "append_to_chat": False})
+                                  "append_to_chat": False})| RunnableLambda(lambda x: x["response"]) | StrOutputParser()| StrOutputParser()
+       
        
     )
 
