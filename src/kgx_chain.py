@@ -245,12 +245,7 @@ def init_concept_chain():
             RunnableLambda(lambda x: print(x) or bool(x.get("context"))).with_config(
                 run_name="has_context"
             ),
-            ANSWER_PROMPT | llm | RunnableLambda(
-            lambda x: {
-                "response": x,
-                "append_to_chat": True
-            }
-        ) | StrOutputParser()
+            ANSWER_PROMPT | llm | StrOutputParser()
         ),
         # If no studies from the graph, and empty context respond with static text
         RunnableLambda(lambda x: {"response":"No studies were found to answer the query.", 
