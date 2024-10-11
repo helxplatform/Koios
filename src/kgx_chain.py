@@ -59,11 +59,13 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages(
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template("{page_content}")
 
 
-def _format_chat_history(chat_history: List[Tuple[str, str]]) -> List:
+def _format_chat_history(chat_history: List[Tuple[str, str]],response_data: dict) -> List:
     buffer = []
-    for human, ai in chat_history:
-        buffer.append(HumanMessage(content=human))
-        buffer.append(AIMessage(content=ai))
+    print("reponse",response_data)
+    if response_data.get("append_to_chat", True):
+        for human, ai in chat_history:
+            buffer.append(HumanMessage(content=human))
+            buffer.append(AIMessage(content=ai))
     return buffer
 
 
@@ -101,6 +103,7 @@ async def retrieve_studies(concepts):
             RETURN c.name AS concept_name,v.name AS variable_name,v.id AS variable_id,v.description AS variable_desc, s.id AS study_id
             LIMIT 100
         """
+
         result = redis_graph.query(query, read_only=True)
         if result.result_set is None:
             return pd.DataFrame(columns=['concept_name', 'variable_name','variable_id','variable_desc','study_id'])
@@ -147,10 +150,8 @@ async def retrieve_studies(concepts):
 
         df_summary[['study_name', 'permalink', 'description']] = df_summary['study_id'].apply(
             lambda x: pd.Series(get_study_data(x)))
-        print(df_summary)
         # Filter out rows where study_name is empty (i.e., study not found in the JSON file)
         df_summary = df_summary[df_summary['study_name'] != ""]
-        print(df_summary)
 
 
         # Concatenate the `variable_name`, `variable_id`, and `variable_desc`
@@ -227,17 +228,11 @@ def init_concept_chain():
     extract_concepts = ce_prompt | llm | StrOutputParser()
 
 
-    def process_if_non_empty(input_data):
-        if input_data["input"].strip():
-            return extract_concepts | get_studies_and_variables
-        return "No information available"  # Return message if no concept is extracted
-
-
     _inputs = RunnableParallel(
         {
             "input": lambda x: x["input"],
 
-            "chat_history": lambda x: _format_chat_history(x['chat_history']),
+            "chat_history": lambda x: _format_chat_history(x['chat_history'],{"append_to_chat": True}),
             "context": extract_concepts | get_studies_and_variables | StrOutputParser()
 
 
@@ -247,18 +242,23 @@ def init_concept_chain():
     answer_generation_chain = RunnableBranch(
         # check if we can get some studies from the graph.
         (
-            RunnableLambda(lambda x: print(x) or bool(x.get("con_context"))).with_config(
+            RunnableLambda(lambda x: print(x) or bool(x.get("context"))).with_config(
                 run_name="has_context"
             ),
-            _inputs | ANSWER_PROMPT | llm | StrOutputParser()
+            ANSWER_PROMPT | llm | RunnableLambda(
+            lambda x: {
+                "response": x,
+                "append_to_chat": True
+            }
+        ) | StrOutputParser()
         ),
         # If no studies from the graph, and empty context respond with static text
-        RunnableLambda(lambda x: "No studies were found to answer the query."),
+        RunnableLambda(lambda x: {"response":"No studies were found to answer the query.", 
+                                  "append_to_chat": False})
+       
     )
 
     qachain = _inputs | answer_generation_chain
-
-    qachain = config.configure_langfuse(qachain)
 
     qachain = config.configure_langfuse(qachain)
 
