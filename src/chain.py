@@ -27,6 +27,9 @@ import fastapi
 from operator import itemgetter
 from langserve import add_routes
 from bs4 import BeautifulSoup
+import tempfile
+from nemoguardrails.integrations.langchain.runnable_rails import RunnableRails
+from nemoguardrails import RailsConfig
 
 app = fastapi.FastAPI()
 
@@ -175,10 +178,27 @@ def init_chain():
     ).with_types(input_type=Question)
 
     qachain = _inputs | ANSWER_PROMPT | llm | StrOutputParser()
+    #Nemo Guadrails yet do not support Langfuse
+    #qachain = config.configure_langfuse(qachain)
+    raw_config = config.langfuse.get_prompt("GUARDRAILS_CONFIG").prompt
+    raw_guardrails = config.langfuse.get_prompt("INPUT_GUARDRAILS").prompt
+    def create_guard_config_folder(config_content, prompt_content):
+    # Create a temporary directory for guardConfig
+        temp_dir = tempfile.mkdtemp()
+        guard_config_path = os.path.join(temp_dir, "config")
+        os.makedirs(guard_config_path, exist_ok=True)
+        config_file_path = os.path.join(guard_config_path, "config.yml")
+        prompt_file_path = os.path.join(guard_config_path, "prompt.yml")
+        with open(config_file_path, 'w') as config_file:
+            config_file.write(config_content)
+        with open(prompt_file_path, 'w') as prompt_file:
+            prompt_file.write(prompt_content)
+        return guard_config_path
+    rail_config = RailsConfig.from_path(create_guard_config_folder(raw_config,raw_guardrails))
+    guardrails = RunnableRails(rail_config,llm)  
+    gaurdrailchain = guardrails | qachain
 
-    qachain = config.configure_langfuse(qachain)
-
-    return qachain
+    return gaurdrailchain
 
 add_routes(
     app,

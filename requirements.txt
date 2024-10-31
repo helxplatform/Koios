@@ -13,3 +13,4 @@ beautifulsoup4
 langchain-openai
 redis
 pandas
+nemoguardrails
