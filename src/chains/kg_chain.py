@@ -139,7 +139,7 @@ class KGChain:
                                lambda in_file, current_study_id:
                                in_file.split('.')[0] == current_study_id.split('.')[0],
                                exclude_keys=["study_id"]
-                               )
+                               )[0]
             ))
 
         # filter empty study names,
@@ -236,7 +236,7 @@ class KGChain:
 
 if __name__ == "__main__":
     kg_agent = KGChain(config=app_config)
-    user_q = Question(chat_history=[], input="What studies are available for asthma?")
+    user_q = Question(chat_history=[], input="what studies are there about sickle cell?")
     qa_chain = kg_agent.as_generative_chain()
     response = asyncio.run(qa_chain.ainvoke(user_q.dict()))
     print(response)
