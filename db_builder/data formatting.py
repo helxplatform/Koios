@@ -9,6 +9,7 @@ def read_json(file_path):
         data = json.load(file)
     return data
 
+
 # Function to clean the data
 def clean_data(data):
     cleaned_data = []
