@@ -1,5 +1,5 @@
+from langfuse import Langfuse
 from langchain_community.embeddings import OllamaEmbeddings
-from qdrant_client import QdrantClient, async_qdrant_client
 import os
 from pathlib import Path
 LLM_URL = os.getenv('LLM_URL', 'https://vllm.apps.renci.org/v1').rstrip('/')
@@ -13,13 +13,24 @@ LOG_FILE_PATH = os.getenv("LOG_FILE_PATH", Path(os.path.dirname(__file__), '..' 
 LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "false").lower() == "true"
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
-LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "")
+LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://localhost:3000")
 LLM_SERVER_TYPE = os.getenv("LLM_SERVER_TYPE", "VLLM")
 ollama_emb = OllamaEmbeddings(model=EMB_MODEL_NAME, base_url=EMBEDDING_URL)
 ollama_emb.query_instruction = ""
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
+REDIS_GRAPH_NAME = os.getenv("REDIS_GRAPH_NAME", "")
+TMP_DIR = os.getenv("TMP_DIR", os.path.join(os.path.dirname(os.path.realpath(__file__)),'..', 'tmp'))
 
-QClient = QdrantClient(url=QDRANT_URL)
-AQClient = async_qdrant_client.AsyncQdrantClient(url=QDRANT_URL)
+
+
+if LANGFUSE_ENABLED:
+    langfuse = Langfuse(secret_key=LANGFUSE_SECRET_KEY,
+                        public_key=LANGFUSE_PUBLIC_KEY,
+                        host=LANGFUSE_HOST)
+else:
+    langfuse = None
 
 
 def configure_langfuse(runnable):
