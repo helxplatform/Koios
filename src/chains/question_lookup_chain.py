@@ -71,13 +71,13 @@ class QuestionLookupChain:
             ),
             # no chat history , pass the whole question
             RunnableLambda(itemgetter("input")),
-        )
+        ).with_config(run_name="rephrase_based_on_chat")
         # so retrival chain looks like this , rephrase the last query as standalone question , and get some documents.
         retrival_chain = (rephrase_branch |
                             self.data_store.as_retriever(search_kwargs=lookup_parameters)
                                 .with_config(run_name="qdrant_lookup") |
                             self._combine_documents)
-        return retrival_chain
+        return retrival_chain.with_config(run_name='retrieve_documents')
 
     def as_generative_chain(self, lookup_parameters=None) -> Runnable:
         if lookup_parameters is None:
@@ -92,7 +92,17 @@ class QuestionLookupChain:
             }
         ).with_types(input_type=Question).with_config(run_name="question_lookup_chain")
 
-        generative_chain = _inputs | self.ANSWER_GENERATION_PROMPT | self.llm | StrOutputParser()
+        answer_chain = (self.ANSWER_GENERATION_PROMPT | self.llm | StrOutputParser())
+        generative_chain = (_inputs | RunnableParallel(
+            {
+                "output":  RunnableLambda(lambda x: {
+                    "input": x["input"],
+                    "context": x.get("context", ""),
+                    "chat_history": x["chat_history"]}
+                    ) | answer_chain,
+                "extra": RunnableLambda(lambda x: x.get("context", {}).get("extra_data", {}))
+            }
+        ))
         return config.configure_langfuse(generative_chain)
 
     def _get_raw_from_langfuse(self, prompt_name:str)-> str:
@@ -121,7 +131,10 @@ class QuestionLookupChain:
             if document.metadata['study_id'] not in docs_seen:
                 doc_strings.append(format_document(document, document_prompt))
                 docs_seen.append(document.metadata['study_id'])
-        return document_separator.join(doc_strings)
+        return {
+            "context": document_separator.join(doc_strings),
+            "extra_data": {}
+        }
 
 
 

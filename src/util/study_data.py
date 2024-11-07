@@ -18,4 +18,5 @@ def get_study_data(study_id, comparator=lambda x, y: x == y, exclude_keys=None):
                 data = {x: data[x] for x in data if x not in exclude_keys}
             return data, 200
 
-    return {"study_name": "", "permalink": "", "description": ""}, 404
+    return {x: "" for x in {"study_name": "", "permalink": "", "description": "", "study_id": ""}
+            if x not in exclude_keys}, 404

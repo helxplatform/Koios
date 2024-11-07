@@ -26,8 +26,9 @@ class InputGuard:
                                                       rails_prompt=rails_prompt
                                                       )
         rails_config = RailsConfig.from_path(rail_config_dir)
+
         llm = LLMFactory(config)
-        instance = RunnableRails(rails_config, llm)
+        instance = (RunnableRails(rails_config, llm))
         return instance
 
     @staticmethod
