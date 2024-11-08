@@ -32,3 +32,9 @@ def create_agent(llm: ChatOpenAI, system_prompt: str):
 def agent_node(state, agent, name):
     result = agent.invoke(state)
     return {"input": [AIMessage(content=result, name=name)]}
+
+def agent_node_dict(state, agent, name):
+    result = agent.invoke(state)
+    output = {"input": [AIMessage(content=result['output'], name=name)],
+              "extra": result.get('extra', {})}
+    return output
