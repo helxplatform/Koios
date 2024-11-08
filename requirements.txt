@@ -12,6 +12,7 @@ openai
 tiktoken
 beautifulsoup4
 langchain-openai
+langgraph
 falkordb
 pandas
 nemoguardrails
