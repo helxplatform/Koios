@@ -40,8 +40,6 @@ workflow.add_node("KG_lookup", kg_lookup_agent_node)
 workflow.add_node("QV_lookup", qv_lookup_agent_node)
 workflow.add_node("supervisor", supervisor_agent.as_generative_chain())
 
-# Add the intent detection node
-# workflow.add_node("intent", intent_node)
 
 # Define how members are laid out (researcher, comedian, etc.)
 for member in members:

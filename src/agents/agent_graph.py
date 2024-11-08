@@ -3,19 +3,19 @@ import operator
 import json
 from typing import Sequence, TypedDict, Annotated, List
 from langchain_core.messages import BaseMessage, HumanMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-
+from util.llm_helper import LLMFactory
 from langgraph.graph import END, StateGraph, START
 from agents.utils import *
-from agents.supervisor import llm, supervisor_chain
+from agents.supervisor import SupervisorAgent
 from langgraph.checkpoint.memory import MemorySaver
-from chain import init_chain
-from agents.supervisor import members
+from chains.question_lookup_chain import QuestionLookupChain
+from chains.kg_chain import KGChain
+import config as app_config
 
 
-# The agent state is the input to each node in the graph
-# Our state Schema (https://langchain-ai.github.io/langgraph/concepts/low_level/#schema)
 class AgentState(TypedDict):
+    # The agent state is the input to each node in the graph
+    # Our state Schema (https://langchain-ai.github.io/langgraph/concepts/low_level/#schema)
     # The annotation tells the graph that new messages will always
     # be added to the current states
     input: Annotated[Sequence[BaseMessage], operator.add]
@@ -23,8 +23,9 @@ class AgentState(TypedDict):
     next: str
     chat_history: List = []
 
-# Helper function to analyze user intent
+
 def analyze_intent(query: str) -> List[int]:
+    # Helper function to analyze user intent
     intent_cat_query = (
         f"Please analyze the potential intent of the following query and identify it as one or more of the given categories: "
         f"'{query}'. Categories: 1. Factual Queries, 2. Explanatory Inquiries, 3. Troubleshooting Assistance, "
@@ -32,12 +33,14 @@ def analyze_intent(query: str) -> List[int]:
         "Respond only with the category numbers."
     )
     # Run the LLM to analyze the query
+    llm = LLMFactory(config=app_config)
     response = llm([HumanMessage(content=intent_cat_query)])
     # Convert the response to a list of integers
     return list(map(int, response.content.split(",")))
 
-# Helper function to log queries and intents to a JSON file
+
 def log_query_intent(query: str, intents: List[int], filename: str = "query_intents.json"):
+    # Helper function to log queries and intents to a JSON file
     try:
         # Load existing data
         with open(filename, 'r') as f:
@@ -45,7 +48,7 @@ def log_query_intent(query: str, intents: List[int], filename: str = "query_inte
     except (FileNotFoundError, json.JSONDecodeError):
         # If file doesn't exist or is empty, initialize an empty list
         data = []
-    
+
     # Append new query and intents
     data.append({
         "query": query,
@@ -72,21 +75,23 @@ def intent_node(state: AgentState) -> AgentState:
     state['next'] = "supervisor"  # or another agent based on intent
     return state
 
-# Create our agents (researcher and comedian)
-research_node = functools.partial(agent_node, agent=init_chain(), name="researcher")
-comedian_agent = create_agent(llm, "You are a comedian")
-comedian_node = functools.partial(agent_node, agent=comedian_agent, name="comedian")
+
+# Create our agents (KG lookup and QV lookup)
+kg_lookup_agent_node = functools.partial(agent_node_dict, agent=KGChain(app_config).as_generative_chain(), name="KG_lookup_agent")
+qv_lookup_agent_node = functools.partial(agent_node_dict, agent=QuestionLookupChain(app_config).as_generative_chain(), name="QV_lookup_agent")
+supervisor_agent = SupervisorAgent(app_config)
+members = supervisor_agent.members
 
 # Initialize the workflow with our state schema.
 workflow = StateGraph(AgentState)
 
-# Add the nodes to the workflow
-workflow.add_node("researcher", research_node)
-workflow.add_node("comedian", comedian_node)
-workflow.add_node("supervisor", supervisor_chain)
-
 # Add the intent detection node
 workflow.add_node("intent", intent_node)
+# Add the nodes to the workflow
+workflow.add_node("KG_lookup", kg_lookup_agent_node)
+workflow.add_node("QV_lookup", qv_lookup_agent_node)
+workflow.add_node("supervisor", supervisor_agent.as_generative_chain())
+
 
 # Define how members are laid out (researcher, comedian, etc.)
 for member in members:
@@ -100,6 +105,7 @@ workflow.add_conditional_edges("supervisor", lambda x: x["next"], conditional_ma
 
 # Add the entry point, making the supervisor the one that accepts user input
 workflow.add_edge(START, "intent")  # Intent analysis is the first step, then routes to supervisor
+workflow.add_edge("intent", "supervisor")
 
 # Set up memory
 memory = MemorySaver()
@@ -127,8 +133,8 @@ if __name__ == "__main__":
         if "__end__" not in s:
             print(s)
             state = graph.get_state(thread_config)
-            print(state['next'])
-            print(state['intents'])  # Prints the detected intents
+            print(state)
+            # Prints the detected intents
 
 
 # the JSON storage file and intents should look like this 
