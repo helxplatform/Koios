@@ -7,8 +7,8 @@ FROM python:3.12.1-slim-bullseye
 
 
 # Install required packages
-RUN apk update && \
-   apk add g++ gcc \ 
+RUN apt-get update
+RUN apt-get install -y g++ gcc
 # upgrade openssl \
 
 # RUN apk add openssl=3.1.4-r5
