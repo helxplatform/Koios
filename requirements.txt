@@ -1,6 +1,7 @@
 aiohttp
 langchain
 langchain-community
+httpx==0.27.2
 fastapi
 requests
 qdrant-client
