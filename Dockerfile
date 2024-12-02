@@ -11,7 +11,7 @@ RUN apk update && \
    apk add g++ gcc \ 
 # upgrade openssl \
 
-RUN apk add openssl=3.1.4-r5
+# RUN apk add openssl=3.1.4-r5
 
 
 RUN pip install --upgrade pip
