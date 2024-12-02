@@ -7,13 +7,11 @@ FROM python:3.12.1-slim-bullseye
 
 
 # Install required packages
-#RUN apk update && \
-#    apk add g++ gcc
+RUN apk update && \
+   apk add g++ gcc \ 
+# upgrade openssl \
 
-
-#upgrade openssl \
-
-#RUN apk  add openssl=3.1.4-r5
+RUN apk add openssl=3.1.4-r5
 
 
 RUN pip install --upgrade pip
