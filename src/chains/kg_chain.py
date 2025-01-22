@@ -75,7 +75,7 @@ class KGChain:
             # check if we can get some studies from the graph.
             (
                 RunnableLambda(
-                    lambda x:  bool(x.get("context", {}).get("context"))
+                    lambda x:  bool(x)
                 ).with_config(
                     run_name="has_context"
                 ),
@@ -89,7 +89,7 @@ class KGChain:
             {
                 "output":  RunnableLambda(lambda x: {
                     "input": x["input"],
-                    "context": x.get("context", ""),
+                    "context": x.get("context", {}).get("context", ""),
                     "chat_history": x["chat_history"]}
                     ) | answer_chain,
                 "extra": RunnableLambda(lambda x: x.get("context", {}).get("extra_data", {}))
