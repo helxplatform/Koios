@@ -35,6 +35,7 @@ def agent_node(state, agent, name):
 
 def agent_node_dict(state, agent, name):
     result = agent.invoke(state)
-    output = {"input": [AIMessage(content=result['output'], name=name)],
-              "extra": result.get('extra', {})}
+    output = {
+        "input": [AIMessage(content=result['output'], name=name, extra_meta_data=result.get('extra', {}))],
+            }
     return output

@@ -1,5 +1,6 @@
 from langchain_openai import ChatOpenAI
 from langchain_community.llms import Ollama
+from langchain_core.messages import AIMessage
 import os
 
 
@@ -26,7 +27,15 @@ class LLMFactory:
             )
         else:
             raise ValueError(f"Invalid LLM Server type {config.LLM_SERVER_TYPE}")
-        return llm
+        return llm | LLMFactory.strip_thought
+
+    @staticmethod
+    def strip_thought(message: AIMessage):
+        messages = message.content.split('</think>')
+        thought = messages[0].replace('<think>', '').replace('</think>', '')
+        message.content = messages[-1].strip("\n\n")
+        message.response_metadata['thought'] = thought
+        return message
 
     def __new__(cls, config):
         if cls._instance is None:

@@ -3,8 +3,7 @@ from nemoguardrails import RailsConfig
 import os
 import tempfile
 from langfuse import Langfuse
-from util.llm_helper import LLMFactory
-
+from langchain_community.llms import Ollama
 
 class InputGuard:
     _instance = None
@@ -27,7 +26,10 @@ class InputGuard:
                                                       )
         rails_config = RailsConfig.from_path(rail_config_dir)
 
-        llm = LLMFactory(config)
+        llm = Ollama(
+                base_url=config.GUARDIAN_MODEL_HOST,
+                model=config.GUARDIAN_MODEL_NAME
+            )
         instance = (RunnableRails(rails_config, llm))
         return instance
 
