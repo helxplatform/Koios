@@ -40,6 +40,7 @@ class SupervisorAgent:
             "\n {member_description}"
             "Your task is to respond the name of workers that should perform the task next."
             "Once the task is completed review it for further action. And respond with the next member to call or FINISH to mark its been done."
+            "Return your response as a json object with keys 'next' and the value for that key as the choice you made."
         )
         # Our team supervisor is an LLM node. It just picks the next agent to process
         # and decides when the work is completed
@@ -49,10 +50,10 @@ class SupervisorAgent:
         # variable and the supervisor will tell the Langraph runtime what (who to call) next.
         prompt = ChatPromptTemplate.from_messages(
             [
-                ("system", system_prompt),
+                ("user", system_prompt),
                 MessagesPlaceholder(variable_name="input"),
                 (
-                    "system",
+                    "user",
                     "Given the conversation above, which members  should act next?"
                     " Or should we FINISH? Select one of: {options}",
                 ),
@@ -66,7 +67,7 @@ class SupervisorAgent:
         prompt = self._build_prompt()
         return (
                 prompt
-                | self.llm.bind(extra_body={"guided_json": self.guided_choice})
+                | self.llm #.bind(extra_body={"guided_json": self.guided_choice})
                 | JsonOutputParser()
         )
 

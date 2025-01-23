@@ -5,6 +5,8 @@ from typing import Sequence, TypedDict, Annotated, List, Dict, Any
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from langgraph.graph import END, StateGraph, START
+
+import config
 from agents.utils import *
 from agents.supervisor import SupervisorAgent
 from langgraph.checkpoint.memory import MemorySaver
@@ -43,7 +45,7 @@ workflow.add_node("supervisor", supervisor_agent.as_generative_chain())
 
 # Define how members are laid out (researcher, comedian, etc.)
 for member in members:
-    workflow.add_edge(member, END)  # Ends after running the agent unless routed to the supervisor
+    workflow.add_edge(member, "supervisor")  # Ends after running the agent unless routed to the supervisor
 
 # The supervisor populates the "next" field in the graph state which routes to a node or finishes
 conditional_map = {k: k for k in members}
@@ -63,7 +65,13 @@ graph = workflow.compile(checkpointer=memory)
 if __name__ == "__main__":
     # Test code to run
     graph.get_graph().print_ascii()
-    thread_config = {"configurable": {"thread_id": "1"}}
+    from langfuse.callback import CallbackHandler
+    langfuse_callback = CallbackHandler(
+        host=config.LANGFUSE_HOST,
+        secret_key=config.LANGFUSE_SECRET_KEY,
+        public_key=config.LANGFUSE_PUBLIC_KEY
+    )
+    thread_config = {"configurable": {"thread_id": "1"}, "callbacks":[langfuse_callback]}
 
     for s in graph.stream(
             {
