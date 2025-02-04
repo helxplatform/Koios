@@ -9,11 +9,10 @@ class SupervisorAgent:
 
         # members of the workflow that are managed by this supervisor
         self.members = {
-            "KG_lookup": "This agent identifies biomedical concepts in an input, finds related study variables, "
-                         "and provides the study abstracts that include those variables.",
-            "QV_lookup": "This agent searches a database of similar questions, "
-                         "each linked to potential study abstracts that answer them. "
-                         "It then returns study abstracts relevant to the input question."
+            "KG_lookup": "Ideal for queries containing biomedical concepts (such as medical terms, diseases, or treatments), "
+                         "Can answer queries that involve studying relationships between biomedical concepts and related study variables (without needing detailed study descriptions)",
+            "QV_lookup": "Best suited for general queries about studies "
+                         "Ideal for direct questions about specific study outcomes or findings, where the system can return relevant abstracts based on pre-existing study descriptions "
         }
         self.options = ["FINISH"] + list(self.members.keys())
         # VLLM (our backend llm server) needed a bit of a tweak to send us
@@ -38,7 +37,7 @@ class SupervisorAgent:
             "You are a supervisor tasked with managing a conversation between the"
             " following workers:  {members}."
             "\n {member_description}"
-            "Your task is to respond the name of workers that should perform the task next."
+            "Your task is to respond the name of workers that should perform the next task."
             "Once the task is completed review it for further action. And respond with the next member to call or FINISH to mark its been done."
             "Return your response as a json object with keys 'next' and the value for that key as the choice you made."
         )
