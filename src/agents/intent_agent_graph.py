@@ -40,7 +40,7 @@ def extract_user_preferences_node(state: AgentState) -> AgentState:
     )
 
     llm = LLMFactory(config=app_config)
-    response = llm([HumanMessage(content=preference_query + "\n\nChat History:\n" + str(chat_history))])
+    response = llm.invoke([HumanMessage(content=preference_query + "\n\nChat History:\n" + str(chat_history))])
 
     try:
         extracted_preferences = json.loads(response.content)
@@ -71,8 +71,11 @@ def analyze_intent_and_scope(query: str) -> dict:
 
     llm = LLMFactory(config=app_config)
     
-    intent_response = llm([HumanMessage(content=intent_cat_query)])
-    scope_response = llm([HumanMessage(content=scope_query)])
+    print("LLM type:", type(llm)) # debugging
+
+    intent_response = llm.invoke([HumanMessage(content=intent_cat_query)])
+    scope_response = llm.invoke([HumanMessage(content=scope_query)])
+
 
     # Parse the responses
     try:
@@ -124,12 +127,14 @@ def intent_node(state: AgentState) -> AgentState:
     # Get the current user input
     query = state['input'][-1].content
     # Analyze the intent of the query
-    intents = analyze_intent_and_scope(query)
+    intents, scope = analyze_intent_and_scope(query)
     # Saving the intents for now 
     state['intents'] = intents
-    
+
+    state['scope'] = scope 
+
     # Log the query and intents to a JSON file
-    log_query_intent(query, intents)
+    log_query_intent(query, intents, scope)
     
     # After identifying the intent, route to the appropriate agent or supervisor
     state['next'] = "supervisor"  # or another agent based on intent
@@ -204,17 +209,3 @@ if __name__ == "__main__":
             state = graph.get_state(thread_config)
             print(state)
             # Prints the detected intents
-
-
-# the JSON storage file and intents should look like this 
-
-# [
-#     {
-#         "query": "explain that more",
-#         "intents": [2, 5]
-#     },
-#     {
-#         "query": "how to troubleshoot this error?",
-#         "intents": [3]
-#     }
-# ]
