@@ -13,7 +13,6 @@ from chains.kg_chain import KGChain
 import config as app_config
 from typing import Sequence, TypedDict, Annotated, Any
 
-
 class AgentState(TypedDict):
     """
     The state schema for the agent workflow. This keeps track of:
