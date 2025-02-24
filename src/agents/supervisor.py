@@ -117,7 +117,7 @@ class SupervisorAgent:
             prompt
             | self.llm  
             | JsonOutputParser()  
-            | RunnableLambda(lambda response: self.enforce_user_preferences(
-                response, extract_user_preferences_node({"chat_history": self.chat_history})  
+            | RunnableLambda(lambda response: self.enforce_user_preferences(response, extract_user_preferences_node({"chat_history": []})  # Default empty chat history
+
             ))  
         )

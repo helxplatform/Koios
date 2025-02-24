@@ -47,6 +47,11 @@ def extract_user_preferences_node(state: AgentState) -> AgentState:
     except json.JSONDecodeError:
         extracted_preferences = {"blocked_terms": [], "response_format": "list"}  # Default preferences
 
+    if "next" not in state:
+            state["next"] = "supervisor"
+
+    state.setdefault("extra", {})
+
     # Store preferences in state
     state["extra"]["user_preferences"] = extracted_preferences
     state["next"] = "supervisor"  # Route to the supervisor next
