@@ -9,7 +9,7 @@ class SupervisorAgent:
 
         # members of the workflow that are managed by this supervisor
         self.members = {
-            "KG_lookup": "Ideal for queries containing biomedical concepts (such as medical terms, diseases, or treatments), "
+            "KG_lookup": "Ideal for queries that are related to study variables (such which variables measures asthma), "
                          "Can answer queries that involve studying relationships between biomedical concepts and related study variables (without needing detailed study descriptions)",
             "QV_lookup": "Best suited for general queries about studies "
                          "Ideal for direct questions about specific study outcomes or findings, where the system can return relevant abstracts based on pre-existing study descriptions "

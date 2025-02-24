@@ -70,24 +70,30 @@ class KGChain:
         )
 
     def as_generative_chain(self):
-        retrival_chain = self.as_retrival_chain()
+        retrival_chain = RunnableParallel(
+            {
+                "input": lambda x: x["input"],
+                "chat_history": lambda x: format_chat_history(x["chat_history"]),
+                "context": (self.as_concept_extraction_chain() | self._get_studies_as_runnable() )
+                .with_config(run_name="retrival")
+            }
+        ).with_types(input_type=Question).with_config(run_name="kg_lookup_chain")  # Added type validation
+
         answer_chain = RunnableBranch(
-            # check if we can get some studies from the graph.
             (
                 RunnableLambda(
-                    lambda x:  bool(x)
+                    lambda x: bool(x)
                 ).with_config(
                     run_name="has_context"
                 ),
                 (self.ANSWER_GENERATION_PROMPT | self.llm | StrOutputParser()).with_config(run_name="answer_generation")
             ),
-            # If no studies from the graph, and empty context respond with static text
             RunnableLambda(lambda x: "No studies were found to answer the query.").with_config(run_name="no_data"),
         )
 
         generative_chain = retrival_chain | RunnableParallel(
             {
-                "output":  RunnableLambda(lambda x: {
+                "output": RunnableLambda(lambda x: {
                     "input": x["input"],
                     "context": x.get("context", {}).get("context", ""),
                     "chat_history": x["chat_history"]}
@@ -95,7 +101,7 @@ class KGChain:
                 "extra": RunnableLambda(lambda x: x.get("context", {}).get("extra_data", {}))
             }
         )
-        # return RunnableLambda(lambda x: print(x) or print(type(x)) or x)
+        
         return config.configure_langfuse(generative_chain)
 
     ######
@@ -106,7 +112,7 @@ class KGChain:
     #  Begin Study retrieval method definitions
     ####
 
-    async def _get_one_hop_variables(self, concept_id, limit=100):
+    async def _get_one_hop_variables(self, concept_id, limit=10):
         """
         Gets variables one hop away from a concept
         :return:
@@ -115,7 +121,7 @@ class KGChain:
         result = await self.graph.query_graph(self.cypher_query(concept_id, limit))
         return self._format_redis_graph_result(result)
 
-    def _get_one_hop_variables_sync(self, concept_id, limit=100):
+    def _get_one_hop_variables_sync(self, concept_id, limit=10):
         result = self.graph.query_graph_sync(self.cypher_query(concept_id, limit))
         return self._format_redis_graph_result(result)
 
