@@ -77,7 +77,7 @@ class KGChain:
                 "context": (self.as_concept_extraction_chain() | self._get_studies_as_runnable() )
                 .with_config(run_name="retrival")
             }
-        ).with_types(input_type=Question).with_config(run_name="kg_lookup_chain")  # Added type validation
+        ).with_types(input_type=Question).with_config(run_name="kg_lookup_chain")  # Added type validation to match QV
 
         answer_chain = RunnableBranch(
             (
@@ -112,7 +112,7 @@ class KGChain:
     #  Begin Study retrieval method definitions
     ####
 
-    async def _get_one_hop_variables(self, concept_id, limit=10):
+    async def _get_one_hop_variables(self, concept_id, limit=100):
         """
         Gets variables one hop away from a concept
         :return:
@@ -121,7 +121,7 @@ class KGChain:
         result = await self.graph.query_graph(self.cypher_query(concept_id, limit))
         return self._format_redis_graph_result(result)
 
-    def _get_one_hop_variables_sync(self, concept_id, limit=10):
+    def _get_one_hop_variables_sync(self, concept_id, limit=100):
         result = self.graph.query_graph_sync(self.cypher_query(concept_id, limit))
         return self._format_redis_graph_result(result)
 
