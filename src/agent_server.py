@@ -1,23 +1,31 @@
 from fastapi import FastAPI
-import config as app_config
-from chains.kg_chain import KGChain
-from chains.question_lookup_chain import QuestionLookupChain
+from fastapi.middleware.cors import CORSMiddleware
 from langserve import add_routes
-from models.user_question import Question
-from langchain_core.runnables import RunnableLambda
-from guardrails.input_guard import InputGuard
-from agents.route_agentic_graph import graph, AgentState
+from agents.route_agentic_graph import graph
+import logging
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+# Create FastAPI app
 app = FastAPI(
     title="Koios agentic mode"
 )
 
-# add langserve routes
+# Add CORS middleware for browser-based clients
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Add routes with LangServe
 add_routes(
     app=app,
     runnable=graph,
-    input_type=AgentState,
     path="/agent"
 )
 

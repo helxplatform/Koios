@@ -70,12 +70,12 @@ class KGChain:
         )
 
     def as_generative_chain(self):
-        retrival_chain = self.as_retrival_chain()
+        retrival_chain = self.as_retrival_chain().with_config(run_name="kg_lookup_chain")
+
         answer_chain = RunnableBranch(
-            # check if we can get some studies from the graph.
             (
                 RunnableLambda(
-                    lambda x:  bool(x)
+                    lambda x: bool(x)
                 ).with_config(
                     run_name="has_context"
                 ),
@@ -87,7 +87,7 @@ class KGChain:
 
         generative_chain = retrival_chain | RunnableParallel(
             {
-                "output":  RunnableLambda(lambda x: {
+                "output": RunnableLambda(lambda x: {
                     "input": x["input"],
                     "context": x.get("context", {}).get("context", ""),
                     "chat_history": x["chat_history"]}
@@ -95,7 +95,7 @@ class KGChain:
                 "extra": RunnableLambda(lambda x: x.get("context", {}).get("extra_data", {}))
             }
         )
-        # return RunnableLambda(lambda x: print(x) or print(type(x)) or x)
+        
         return config.configure_langfuse(generative_chain)
 
     ######

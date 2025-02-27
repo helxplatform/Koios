@@ -100,7 +100,7 @@ class QuestionLookupChain:
                     "context": x.get("context", ""),
                     "chat_history": x["chat_history"]}
                     ) | answer_chain,
-                "extra": RunnableLambda(lambda x: x.get("context", {}).get("extra_data", {}))
+                "extra": {}
             }
         ))
         return config.configure_langfuse(generative_chain)
@@ -131,11 +131,7 @@ class QuestionLookupChain:
             if document.metadata['study_id'] not in docs_seen:
                 doc_strings.append(format_document(document, document_prompt))
                 docs_seen.append(document.metadata['study_id'])
-        return {
-            "context": document_separator.join(doc_strings),
-            "extra_data": {}
-        }
-
+        return document_separator.join(doc_strings)
 
 
 # To test run this code as main...
