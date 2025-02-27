@@ -1,7 +1,7 @@
 import functools
 import operator
 
-from typing import Sequence, TypedDict, Annotated, List, Dict, Any
+from typing import Sequence, TypedDict, Annotated, List, Dict, Any, Optional
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from langgraph.graph import END, StateGraph, START
@@ -21,9 +21,10 @@ from pydantic import Field
 class AgentState(TypedDict):
     # The annotation tells the graph that new messages will always
     # be added to the current states
-    input: Annotated[Sequence[BaseMessage], operator.add]
+    input: str
     # The 'next' field indicates where to route to next
     next: str
+    output: Optional[AIMessage]
     chat_history: List = Field(default_factory=list)
     extra: Dict[str, Any] = Field(default_factory=dict)
 
@@ -32,6 +33,7 @@ class AgentState(TypedDict):
 kg_lookup_agent_node = functools.partial(agent_node_dict, agent=KGChain(app_config).as_generative_chain(), name="KG_lookup_agent")
 qv_lookup_agent_node = functools.partial(agent_node_dict, agent=QuestionLookupChain(app_config).as_generative_chain(), name="QV_lookup_agent")
 supervisor_agent = SupervisorAgent(app_config)
+supervisor_agent_node  = functools.partial(agent_node_dict, agent=supervisor_agent.as_generative_chain(), name="supervisor")
 members = supervisor_agent.members
 
 # Initialize the workflow with our state schema.
@@ -40,12 +42,12 @@ workflow = StateGraph(AgentState)
 # Add the nodes to the workflow
 workflow.add_node("KG_lookup", kg_lookup_agent_node)
 workflow.add_node("QV_lookup", qv_lookup_agent_node)
-workflow.add_node("supervisor", supervisor_agent.as_generative_chain())
+workflow.add_node("supervisor", supervisor_agent_node)
 
 
 # Define how members are laid out (researcher, comedian, etc.)
 for member in members:
-    workflow.add_edge(member, "supervisor")  # Ends after running the agent unless routed to the supervisor
+    workflow.add_edge(member, END)  # Ends after running the agent unless routed to the supervisor
 
 # The supervisor populates the "next" field in the graph state which routes to a node or finishes
 conditional_map = {k: k for k in members}
@@ -59,8 +61,18 @@ workflow.add_edge(START, "supervisor")  # Intent analysis is the first step, the
 # Set up memory
 memory = MemorySaver()
 
+from langfuse.callback import CallbackHandler
+from langchain.callbacks.manager import CallbackManager
+
+langfuse_callback = CallbackHandler(
+    host=config.LANGFUSE_HOST,
+    secret_key=config.LANGFUSE_SECRET_KEY,
+    public_key=config.LANGFUSE_PUBLIC_KEY
+)
+
+callback_manager = CallbackManager([langfuse_callback])
 # Compile the graph with memory
-graph = workflow.compile(checkpointer=memory)
+graph = workflow.compile(checkpointer=memory).with_config(callbacks=callback_manager)
 
 if __name__ == "__main__":
     # Test code to run

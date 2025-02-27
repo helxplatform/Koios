@@ -1,5 +1,7 @@
 from langchain_core.output_parsers.json import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnableLambda
+from langchain_core.messages import HumanMessage
 from util.llm_helper import LLMFactory
 
 
@@ -47,6 +49,7 @@ class SupervisorAgent:
 
         # This is our final prompt. Here we are getting messages either from a User, or other agents through `input`
         # variable and the supervisor will tell the Langraph runtime what (who to call) next.
+        get_user_input = RunnableLambda(lambda x: {"input": [HumanMessage(content=x['input'])]})
         prompt = ChatPromptTemplate.from_messages(
             [
                 ("user", system_prompt),
@@ -60,7 +63,7 @@ class SupervisorAgent:
         ).partial(options=str(self.options), members=", ".join(self.members.keys()), member_description="\n".join([
             f"{member}: {self.members[member]}" for member in self.members
         ]))
-        return prompt
+        return get_user_input | prompt
 
     def as_generative_chain(self):
         prompt = self._build_prompt()
