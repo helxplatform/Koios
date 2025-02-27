@@ -70,14 +70,7 @@ class KGChain:
         )
 
     def as_generative_chain(self):
-        retrival_chain = RunnableParallel(
-            {
-                "input": lambda x: x["input"],
-                "chat_history": lambda x: format_chat_history(x["chat_history"]),
-                "context": (self.as_concept_extraction_chain() | self._get_studies_as_runnable() )
-                .with_config(run_name="retrival")
-            }
-        ).with_types(input_type=Question).with_config(run_name="kg_lookup_chain")  # Added type validation to match QV
+        retrival_chain = self.as_retrival_chain().with_config(run_name="kg_lookup_chain")
 
         answer_chain = RunnableBranch(
             (
@@ -88,6 +81,7 @@ class KGChain:
                 ),
                 (self.ANSWER_GENERATION_PROMPT | self.llm | StrOutputParser()).with_config(run_name="answer_generation")
             ),
+            # If no studies from the graph, and empty context respond with static text
             RunnableLambda(lambda x: "No studies were found to answer the query.").with_config(run_name="no_data"),
         )
 
