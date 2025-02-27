@@ -21,7 +21,7 @@ from pydantic import Field
 class AgentState(TypedDict):
     # The annotation tells the graph that new messages will always
     # be added to the current states
-    input: List[HumanMessage]
+    input: str
     # The 'next' field indicates where to route to next
     next: str
     output: Optional[AIMessage]
