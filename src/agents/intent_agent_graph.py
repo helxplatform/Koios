@@ -14,24 +14,16 @@ import config as app_config
 from typing import Sequence, TypedDict, Annotated, Any
 
 class AgentState(TypedDict):
-    """
-    The state schema for the agent workflow. This keeps track of:
-    - Input messages
-    - The next agent to call
-    - Chat history
-    - Extra metadata (like user preferences)
-    """
-    input: Annotated[Sequence[BaseMessage], operator.add]  # Sequence of messages
-    next: str  # Next node in workflow
-    chat_history: list[BaseMessage]  # Stores user interactions
-    extra: dict[str, Any]  # Stores extracted preferences and metadata
+    input: Annotated[Sequence[BaseMessage], operator.add]
+    # Stores a list of the next agents to process the request
+    next: Annotated[List[str], operator.add] 
+    # stores previous user interactions 
+    chat_history: list[BaseMessage]
+    # used to store extracted user preferences (can be more than one)
+    extra: dict[str, Any]
 
 
 def extract_user_preferences_node(state: AgentState) -> AgentState:
-    """
-    Uses LLM to extract user preferences based on chat history.
-    Stores the extracted preferences in the `extra` field of `AgentState`.
-    """
     chat_history = state.get("chat_history", [])
     preference_query = (
         "Analyze the user's past messages and infer preferences for response formatting, "
@@ -43,44 +35,51 @@ def extract_user_preferences_node(state: AgentState) -> AgentState:
     response = llm.invoke([HumanMessage(content=preference_query + "\n\nChat History:\n" + str(chat_history))])
 
     try:
+        # extract user preference from the response 
         extracted_preferences = json.loads(response.content)
     except json.JSONDecodeError:
-        extracted_preferences = {"blocked_terms": [], "response_format": "list"}  # Default preferences
+        # typically in LLMs, for safety reasons, we can send in a blocked_term
+        extracted_preferences = {"blocked_terms": [], "response_format": "list"}  
 
-    if "next" not in state:
-            state["next"] = "supervisor"
+    if not isinstance(state.get("next"), list):
+        state["next"] = []
 
+    # supervisor is always added next so it continues routing
+    if "supervisor" not in state["next"]:
+        state["next"].append("supervisor")
+
+    
+    print(f"[DEBUG] After fixing `next` in `extract_user_preferences_node`: {state['next']} (Type: {type(state['next'])})")
+
+    # Store extracted preferences to next
     state.setdefault("extra", {})
-
-    # Store preferences in state
     state["extra"]["user_preferences"] = extracted_preferences
-    state["next"] = "supervisor"  # Route to the supervisor next
 
     return state
 
+
+
 def analyze_intent_and_scope(query: str) -> dict:
     """
-    Analyzes the user intent and determines if they are interested in a single node or multiple nodes.
+    Analyzes the user intent and determines what kind of question they're interested in
     """
+    # what type of question is a user asking?
     intent_cat_query = (
         f"Please analyze the intent of the following query and classify it into one or more of the given categories: "
         f"'{query}'. Categories: 1. Factual Queries, 2. Explanatory Inquiries, 3. Troubleshooting Assistance, "
         f"4. Decision Support, 5. Learning Support, 6. Personal Advice, 7. Data Processing, 8. Research Questions, 9. Not Research Related. "
         "Respond only with the category numbers."
     )
-
+    # what is the scope of their query? a single or multiple node response
     scope_query = (
         f"Determine if the following query refers to a single entity or multiple entities: '{query}'. "
         "Respond with 'single' or 'multiple'."
     )
 
     llm = LLMFactory(config=app_config)
-    
-    print("LLM type:", type(llm)) # debugging
 
     intent_response = llm.invoke([HumanMessage(content=intent_cat_query)])
     scope_response = llm.invoke([HumanMessage(content=scope_query)])
-
 
     # Parse the responses
     try:
@@ -88,30 +87,34 @@ def analyze_intent_and_scope(query: str) -> dict:
     except ValueError:
         intents = []
 
-    scope = scope_response.content.strip().lower()  # Expecting 'single' or 'multiple'
+    # Expecting 'single' or 'multiple'
+    scope = scope_response.content.strip().lower()  
 
     return {"intents": intents, "scope": scope}
 
-
 def intent_node(state: AgentState) -> AgentState:
-    # Get the current user input
-    query = state['input'][-1].content
-
-    # Analyze intent and scope
+    # logs the detected intent and scope and ensures there are no duplicate
+    # agents in next
+    query = state["input"][-1].content
     analysis = analyze_intent_and_scope(query)
     intents = analysis["intents"]
-    scope = analysis["scope"]  # "single" or "multiple"
+    scope = analysis["scope"]
 
-    # Save the analysis to the state
-    state['intents'] = intents
-    state['scope'] = scope
+    state["intents"] = intents
+    state["scope"] = scope
 
-    # Log the query, intents, and scope to a JSON file
     log_query_intent(query, intents, scope)
 
-    # Route to the appropriate agent or supervisor
-    state['next'] = "supervisor"
+    if not isinstance(state.get("next"), list):
+        state["next"] = []
+
+    state["next"] = list(set(state["next"]))
+
+    print(f"[DEBUG] After fixing `next` in `intent_node`: {state['next']} (Type: {type(state['next'])})")
+
     return state
+
+
 
 
 def log_query_intent(query: str, intents: List[int], scope: str, filename: str = "query_intents.json"):
@@ -127,23 +130,6 @@ def log_query_intent(query: str, intents: List[int], scope: str, filename: str =
         json.dump(data, f, indent=4)
     
    
-# Define the intent node
-def intent_node(state: AgentState) -> AgentState:
-    # Get the current user input
-    query = state['input'][-1].content
-    # Analyze the intent of the query
-    intents, scope = analyze_intent_and_scope(query)
-    # Saving the intents for now 
-    state['intents'] = intents
-
-    state['scope'] = scope 
-
-    # Log the query and intents to a JSON file
-    log_query_intent(query, intents, scope)
-    
-    # After identifying the intent, route to the appropriate agent or supervisor
-    state['next'] = "supervisor"  # or another agent based on intent
-    return state
 
 
 # Create our agents (KG lookup and QV lookup)
@@ -179,7 +165,14 @@ for member in members:
 
 # Define conditional routing logic
 conditional_map = {k: k for k in members}
+conditional_map["supervisor"] = "supervisor"  
 conditional_map["FINISH"] = END
+
+# Ensure supervisor is added as a valid node
+if "supervisor" not in members:
+    members["supervisor"] = "Main agent that decides the next step based on user preferences"
+
+
 workflow.add_conditional_edges("supervisor", lambda x: x["next"], conditional_map)
 
 # Add the entry point, making the supervisor the one that accepts user input

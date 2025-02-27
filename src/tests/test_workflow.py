@@ -1,8 +1,8 @@
 import os
 from langgraph.graph import StateGraph
 from langchain_core.messages import HumanMessage
-from agents.intent_agent_graph import graph 
-import langchain_openai
+from agents.intent_agent_graph import graph
+
 
 def test_intent_processing():
     """
@@ -13,7 +13,7 @@ def test_intent_processing():
             {"role": "user", "content": "Tell me more about Ibuprofen."}
         ],
         "input": [
-            HumanMessage(content="Tell me more about Ibuprofen.")
+            HumanMessage(content="What are the risks and benefits of Ibuprofen?")
         ]
     }
 

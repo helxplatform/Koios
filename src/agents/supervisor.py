@@ -8,7 +8,6 @@ from typing import List
 
 from util.llm_helper import LLMFactory
 
-import json
 
 
 class SupervisorAgent:
@@ -16,6 +15,8 @@ class SupervisorAgent:
         self.llm = LLMFactory(config)
 
         # members of the workflow that are managed by this supervisor
+        # routes queries to KG lookup or QV lookup based one extracted intent
+        # and user preferences
         self.members = {
             "KG_lookup": "This agent identifies biomedical concepts in an input, finds related study variables, "
                          "and provides the study abstracts that include those variables.",
@@ -80,44 +81,35 @@ class SupervisorAgent:
 
     def enforce_user_preferences(self, response, query_scope):
         """
-        Cleans and standardizes the response to enforce scope consistency.
-        
-        - If the query is about a **single** entity, it forces `KG_lookup`.
-        - If the query is about **multiple** entities, it forces `QV_lookup`.
-        - Ensures the response is in a clean JSON format.
+        Ensures response is structured correctly and `next` is a list.
         """
-
-        # Ensure response is a dictionary --> should be
         if not isinstance(response, dict):
             print("Invalid response format. Resetting to default structure.")
-            response = {"next": "KG_lookup" if query_scope == "single" else "QV_lookup"}
+            response = {"next": ["KG_lookup"] if query_scope == "single" else ["QV_lookup"]}
 
-        # Extract the next agent decision
-        next_agent = response.get("next", "FINISH")
+        next_agent = response.get("next", [])
 
-        # Validate based on query scope
-        if query_scope == "single" and next_agent == "QV_lookup":
-            print(f"Correcting decision: User query was SINGLE entity, but QV_lookup was chosen. Using KG_lookup.")
-            response["next"] = "KG_lookup"  # Override choice
+        # Ensure `next` is always a list
+        if not isinstance(next_agent, list):
+            next_agent = [next_agent] if next_agent else ["supervisor"]
 
-        if query_scope == "multiple" and next_agent == "KG_lookup":
-            print(f"Correcting decision: User query was MULTIPLE entities, but KG_lookup was chosen. Using QV_lookup.")
-            response["next"] = "QV_lookup"  # Override choice
+        response["next"] = next_agent
 
-        # Ensure only required fields are in the response
-        cleaned_response = {"next": response["next"]}
+        return response
 
-        return cleaned_response
 
     def as_generative_chain(self):
         from agents.intent_agent_graph import extract_user_preferences_node
+
         prompt = self._build_prompt()
 
         return (
             prompt
             | self.llm  
             | JsonOutputParser()  
-            | RunnableLambda(lambda response: self.enforce_user_preferences(response, extract_user_preferences_node({"chat_history": []})  # Default empty chat history
-
-            ))  
+            | RunnableLambda(
+                lambda response: self.enforce_user_preferences(
+                    response, extract_user_preferences_node({"chat_history": []})  # Default empty chat history
+                )
+            )
         )
