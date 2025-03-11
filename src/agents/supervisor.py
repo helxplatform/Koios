@@ -43,7 +43,6 @@ class SupervisorAgent:
 
     def _build_prompt(self):
         # This prompt tells the supervisor what the roles of it's members are so it makes the selection properly.
-        # remove intents + scope until after (re route)
         system_prompt = (
             "You are a supervisor tasked with managing a conversation between the"
             " following workers:  {members}.\n {member_description}"
