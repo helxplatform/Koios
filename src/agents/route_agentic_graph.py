@@ -14,7 +14,7 @@ from chains.kg_chain import KGChain
 from chains.question_lookup_chain import QuestionLookupChain
 import config as app_config
 from pydantic import Field
-
+from guardrails.input_guard import InputGuard
 
 # The agent state is the input to each node in the graph
 # Our state Schema (https://langchain-ai.github.io/langgraph/concepts/low_level/#schema)
@@ -36,6 +36,21 @@ supervisor_agent = SupervisorAgent(app_config)
 supervisor_agent_node  = functools.partial(agent_node_dict, agent=supervisor_agent.as_generative_chain(), name="supervisor")
 members = supervisor_agent.members
 
+guardrails_instance = InputGuard(app_config)
+
+def guardrails_node(state: AgentState) -> AgentState:
+    # Process through guardrails
+    result = guardrails_instance.invoke({"input": state["input"]})
+    
+    if "I'm sorry, I can't respond to that." in result.get("output", ""):
+        state["next"] = "FINISH"
+        state["output"] = AIMessage(content=result.get("output", "I'm sorry, I can't respond to that."))
+        return state
+        
+    state["next"] = "supervisor"
+    
+    return state
+
 # Initialize the workflow with our state schema.
 workflow = StateGraph(AgentState)
 
@@ -43,7 +58,7 @@ workflow = StateGraph(AgentState)
 workflow.add_node("KG_lookup", kg_lookup_agent_node)
 workflow.add_node("QV_lookup", qv_lookup_agent_node)
 workflow.add_node("supervisor", supervisor_agent_node)
-
+workflow.add_node("guardrails", guardrails_node)
 
 # Define how members are laid out (researcher, comedian, etc.)
 for member in members:
@@ -56,7 +71,8 @@ conditional_map["FINISH"] = END
 workflow.add_conditional_edges("supervisor", lambda x: x["next"], conditional_map)
 
 # Add the entry point, making the supervisor the one that accepts user input
-workflow.add_edge(START, "supervisor")  # Intent analysis is the first step, then routes to supervisor
+workflow.add_edge(START, "guardrails")
+workflow.add_conditional_edges("guardrails", lambda x: x["next"], {"supervisor": "supervisor", "FINISH": END}) # Intent analysis is the first step, then routes to supervisor
 
 # Set up memory
 memory = MemorySaver()
