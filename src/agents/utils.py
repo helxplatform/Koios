@@ -6,6 +6,7 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from typing import List, Dict, Any, Sequence
+from langfuse.decorators import observe, langfuse_context
 
 import logging_util
 
@@ -37,17 +38,22 @@ def agent_node(state, agent, name):
     result = agent.invoke(state)
     return {"input": [AIMessage(content=result, name=name)]}
 
+@observe()
 def agent_node_dict(state, agent, name):
+    trace_id = langfuse_context.get_current_trace_id()
+
     chat_history = state.get("chat_history", [])
     input_data = {
         "input": state["input"],
         "chat_history": chat_history
     }
     result = agent.invoke(input_data)
+    extra = result.get('extra', {})
+    extra.update({"trace_id": trace_id})
     output = {
         "output": AIMessage(content=result.get('output', ''), name=name),
         "next": result.get('next', ""),
         "input": state["input"],
-        "extra": result.get('extra', {})
+        "extra": extra
     }
     return output
