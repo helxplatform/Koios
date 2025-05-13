@@ -12,6 +12,8 @@ from chains.question_lookup_chain import QuestionLookupChain
 from chains.kg_chain import KGChain
 import config as app_config
 from typing import Sequence, TypedDict, Annotated, Any
+import config
+
 
 class AgentState(TypedDict):
     input: Annotated[Sequence[BaseMessage], operator.add]
@@ -41,15 +43,15 @@ def extract_user_preferences_node(state: AgentState) -> AgentState:
         # typically in LLMs, for safety reasons, we can send in a blocked_term
         extracted_preferences = {"blocked_terms": [], "response_format": "list"}  
 
-    if not isinstance(state.get("next"), list):
-        state["next"] = []
-
-    # supervisor is always added next so it continues routing
-    if "supervisor" not in state["next"]:
-        state["next"].append("supervisor")
+    # if not isinstance(state.get("next"), list):
+    #     state["next"] = []
+    #
+    # # supervisor is always added next so it continues routing
+    # if "supervisor" not in state["next"]:
+    #     state["next"].append("supervisor")
 
     
-    print(f"[DEBUG] After fixing `next` in `extract_user_preferences_node`: {state['next']} (Type: {type(state['next'])})")
+    # print(f"[DEBUG] After fixing `next` in `extract_user_preferences_node`: {state['next']} (Type: {type(state['next'])})")
 
     # Store extracted preferences to next
     state.setdefault("extra", {})
@@ -105,12 +107,12 @@ def intent_node(state: AgentState) -> AgentState:
 
     log_query_intent(query, intents, scope)
 
-    if not isinstance(state.get("next"), list):
-        state["next"] = []
-
-    state["next"] = list(set(state["next"]))
-
-    print(f"[DEBUG] After fixing `next` in `intent_node`: {state['next']} (Type: {type(state['next'])})")
+    # if not isinstance(state.get("next"), list):
+    #     state["next"] = []
+    #
+    # state["next"] = list(set(state["next"]))
+    #
+    # print(f"[DEBUG] After fixing `next` in `intent_node`: {state['next']} (Type: {type(state['next'])})")
 
     return state
 
@@ -163,21 +165,14 @@ workflow.add_edge("extract_user_preferences", "supervisor")  # Passing preferenc
 for member in members:
     workflow.add_edge(member, "supervisor")  # After lookup, return to supervisor
 
-# Define conditional routing logic
+# # Define conditional routing logic
 conditional_map = {k: k for k in members}
-conditional_map["supervisor"] = "supervisor"  
+# conditional_map["supervisor"] = "supervisor"
 conditional_map["FINISH"] = END
-
-# Ensure supervisor is added as a valid node
-if "supervisor" not in members:
-    members["supervisor"] = "Main agent that decides the next step based on user preferences"
 
 
 workflow.add_conditional_edges("supervisor", lambda x: x["next"], conditional_map)
 
-# Add the entry point, making the supervisor the one that accepts user input
-workflow.add_edge(START, "intent")  # Intent analysis is the first step, then routes to supervisor
-workflow.add_edge("intent", "supervisor")
 
 # Set up memory
 memory = MemorySaver()
@@ -188,17 +183,21 @@ graph = workflow.compile(checkpointer=memory)
 if __name__ == "__main__":
     # Test code to run
     graph.get_graph().print_ascii()
-    thread_config = {"configurable": {"thread_id": "1"}}
-    
+    from langfuse.callback import CallbackHandler
+    langfuse_callback = CallbackHandler(
+        host=config.LANGFUSE_HOST,
+        secret_key=config.LANGFUSE_SECRET_KEY,
+        public_key=config.LANGFUSE_PUBLIC_KEY
+    )
+    thread_config = {"configurable": {"thread_id": "1"}, "callbacks": [langfuse_callback]}
+
     for s in graph.stream(
             {
-                # Mimicking previous interactions.
                 "chat_history": [
-                    ("jokes around Heart", "the heart is melting"),
                 ],
                 # Current question.
                 "input": [
-                    HumanMessage(content="explain that more"),
+                    HumanMessage(content="What variables and studies are around sickle cell?"),
                 ]
             }, config=thread_config
     ):
@@ -206,4 +205,22 @@ if __name__ == "__main__":
             print(s)
             state = graph.get_state(thread_config)
             print(state)
-            # Prints the detected intents
+            # print(state['intents'])  # Prints the detected intents
+    #
+    # for s in graph.stream(
+    #         {
+    #             # Mimicking previous interactions.
+    #             "chat_history": [
+    #                 ("jokes around Heart", "the heart is melting"),
+    #             ],
+    #             # Current question.
+    #             "input": [
+    #                 HumanMessage(content="explain that more"),
+    #             ]
+    #         }, config=thread_config
+    # ):
+    #     if "__end__" not in s:
+    #         print(s)
+    #         state = graph.get_state(thread_config)
+    #         print(state)
+    #         # Prints the detected intents
