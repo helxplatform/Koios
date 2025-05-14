@@ -43,16 +43,6 @@ def extract_user_preferences_node(state: AgentState) -> AgentState:
         # typically in LLMs, for safety reasons, we can send in a blocked_term
         extracted_preferences = {"blocked_terms": [], "response_format": "list"}  
 
-    # if not isinstance(state.get("next"), list):
-    #     state["next"] = []
-    #
-    # # supervisor is always added next so it continues routing
-    # if "supervisor" not in state["next"]:
-    #     state["next"].append("supervisor")
-
-    
-    # print(f"[DEBUG] After fixing `next` in `extract_user_preferences_node`: {state['next']} (Type: {type(state['next'])})")
-
     # Store extracted preferences to next
     state.setdefault("extra", {})
     state["extra"]["user_preferences"] = extracted_preferences
@@ -107,13 +97,6 @@ def intent_node(state: AgentState) -> AgentState:
 
     log_query_intent(query, intents, scope)
 
-    # if not isinstance(state.get("next"), list):
-    #     state["next"] = []
-    #
-    # state["next"] = list(set(state["next"]))
-    #
-    # print(f"[DEBUG] After fixing `next` in `intent_node`: {state['next']} (Type: {type(state['next'])})")
-
     return state
 
 
@@ -131,8 +114,6 @@ def log_query_intent(query: str, intents: List[int], scope: str, filename: str =
     with open(filename, 'w') as f:
         json.dump(data, f, indent=4)
     
-   
-
 
 # Create our agents (KG lookup and QV lookup)
 kg_lookup_agent_node = functools.partial(agent_node_dict, agent=KGChain(app_config).as_generative_chain(), name="KG_lookup_agent")
@@ -143,36 +124,30 @@ members = supervisor_agent.members
 # Initialize the workflow with our state schema.
 workflow = StateGraph(AgentState)
 
-# Add the intent detection node (if intent detection is used)
+# Add the intent and preference nodes
 workflow.add_node("intent", intent_node)
-
-# Add the user preference extraction node BEFORE the supervisor
 workflow.add_node("extract_user_preferences", extract_user_preferences_node)
 
-# Add the main agents (KG lookup and QV lookup)
+# Add KG and QV nodes
 workflow.add_node("KG_lookup", kg_lookup_agent_node)
 workflow.add_node("QV_lookup", qv_lookup_agent_node)
 
-# Add the supervisor (which now considers extracted preferences)
+# Add the supervisor node
 workflow.add_node("supervisor", supervisor_agent.as_generative_chain())
 
-# Connect nodes in order
-workflow.add_edge(START, "intent")  # Detecting intent
-workflow.add_edge("intent", "extract_user_preferences")  # Extracting user preferences
-workflow.add_edge("extract_user_preferences", "supervisor")  # Passing preferences to supervisor
+# Routing sequence
+workflow.add_edge(START, "intent")
+workflow.add_edge("intent", "extract_user_preferences")
+workflow.add_edge("extract_user_preferences", "supervisor")
 
-# Define how members are laid out (KG_lookup, QV_lookup)
+# After each lookup, return to supervisor
 for member in members:
-    workflow.add_edge(member, "supervisor")  # After lookup, return to supervisor
+    workflow.add_edge(member, "supervisor")
 
-# # Define conditional routing logic
+# Supervisor decides where to go next or ends
 conditional_map = {k: k for k in members}
-# conditional_map["supervisor"] = "supervisor"
 conditional_map["FINISH"] = END
-
-
 workflow.add_conditional_edges("supervisor", lambda x: x["next"], conditional_map)
-
 
 # Set up memory
 memory = MemorySaver()
@@ -205,22 +180,4 @@ if __name__ == "__main__":
             print(s)
             state = graph.get_state(thread_config)
             print(state)
-            # print(state['intents'])  # Prints the detected intents
-    #
-    # for s in graph.stream(
-    #         {
-    #             # Mimicking previous interactions.
-    #             "chat_history": [
-    #                 ("jokes around Heart", "the heart is melting"),
-    #             ],
-    #             # Current question.
-    #             "input": [
-    #                 HumanMessage(content="explain that more"),
-    #             ]
-    #         }, config=thread_config
-    # ):
-    #     if "__end__" not in s:
-    #         print(s)
-    #         state = graph.get_state(thread_config)
-    #         print(state)
-    #         # Prints the detected intents
+       
