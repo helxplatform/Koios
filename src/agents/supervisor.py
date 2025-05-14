@@ -65,7 +65,7 @@ class SupervisorAgent:
                 (
                     "user",
                     "Given the conversation above, which members should act next?"
-                    " Or should we FINISH? Select one of: {options}",
+                    "Or should we FINISH? Select one of: {options}",
                 ),
             ]
         ).partial(
@@ -98,18 +98,62 @@ class SupervisorAgent:
         return response
 
 
+    # def as_generative_chain(self):
+    #     from agents.intent_agent_graph import extract_user_preferences_node
+
+    #     prompt = self._build_prompt()
+
+    #     return (
+    #         prompt
+    #         | self.llm  
+    #         | JsonOutputParser()  
+    #         | RunnableLambda(
+    #             lambda response: self.enforce_user_preferences(
+    #                 response, extract_user_preferences_node({"chat_history": []})  # Default empty chat history
+    #             )
+    #         )
+    #     )
+
+
     def as_generative_chain(self):
         from agents.intent_agent_graph import extract_user_preferences_node
 
         prompt = self._build_prompt()
 
-        return (
-            prompt
-            | self.llm  
-            | JsonOutputParser()  
-            | RunnableLambda(
-                lambda response: self.enforce_user_preferences(
-                    response, extract_user_preferences_node({"chat_history": []})  # Default empty chat history
-                )
+        def supervisor_logic(state):
+            # --- ✅ 1. Short-circuit if already done ---
+            if "QV_lookup" in state and state["QV_lookup"].get("input"):
+                return {"next": ["FINISH"]}
+            if "KG_lookup" in state and state["KG_lookup"].get("input"):
+                return {"next": ["FINISH"]}
+
+            # --- ✅ 2. Gather metadata for LLM ---
+            scope = state.get("scope", "multiple")
+            intents = state.get("intents", [1])
+            chat_input = state.get("input", [])
+            extra = state.get("extra", {})
+            user_prefs = extra.get("user_preferences", {})
+
+            # Optional: pass previous output into context if desired
+            lookup_results = []
+            if "QV_lookup" in state:
+                for msg in state["QV_lookup"].get("input", []):
+                    lookup_results.append(msg.content)
+            if "KG_lookup" in state:
+                for msg in state["KG_lookup"].get("input", []):
+                    lookup_results.append(msg.content)
+
+            # --- ✅ 3. Run prompt through LLM ---
+            filled_prompt = prompt.partial(
+                scope=scope,
+                intents=intents,
+                lookup_results="\n".join(lookup_results[-3:]) or "None"  # last few if applicable
             )
-        )
+
+            llm_output = self.llm.invoke(filled_prompt.invoke({"input": chat_input}))
+            parsed = JsonOutputParser().invoke(llm_output)
+
+            # --- ✅ 4. Enforce and return ---
+            return self.enforce_user_preferences(parsed, scope)
+
+        return RunnableLambda(supervisor_logic)
