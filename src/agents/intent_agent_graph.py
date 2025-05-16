@@ -95,24 +95,11 @@ def intent_node(state: AgentState) -> AgentState:
     state["intents"] = intents
     state["scope"] = scope
 
-    log_query_intent(query, intents, scope)
 
     return state
 
 
 
-
-def log_query_intent(query: str, intents: List[int], scope: str, filename: str = "query_intents.json"):
-    try:
-        with open(filename, 'r') as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = []
-
-    data.append({"query": query, "intents": intents, "scope": scope})
-
-    with open(filename, 'w') as f:
-        json.dump(data, f, indent=4)
     
 
 # Create our agents (KG lookup and QV lookup)
