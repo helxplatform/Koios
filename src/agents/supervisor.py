@@ -105,13 +105,13 @@ class SupervisorAgent:
         prompt = self._build_prompt()
 
         def supervisor_logic(state):
-            # --- ✅ 1. Short-circuit if already done ---
+            # Short-circuit if already done ---
             if "QV_lookup" in state and state["QV_lookup"].get("input"):
                 return {"next": ["FINISH"]}
             if "KG_lookup" in state and state["KG_lookup"].get("input"):
                 return {"next": ["FINISH"]}
 
-            # --- ✅ 2. Gather metadata for LLM ---
+            # Gather metadata for LLM ---
             scope = state.get("scope", "multiple")
             intents = state.get("intents", [1])
             chat_input = state.get("input", [])
