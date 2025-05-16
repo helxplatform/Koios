@@ -98,22 +98,6 @@ class SupervisorAgent:
         return response
 
 
-    # def as_generative_chain(self):
-    #     from agents.intent_agent_graph import extract_user_preferences_node
-
-    #     prompt = self._build_prompt()
-
-    #     return (
-    #         prompt
-    #         | self.llm  
-    #         | JsonOutputParser()  
-    #         | RunnableLambda(
-    #             lambda response: self.enforce_user_preferences(
-    #                 response, extract_user_preferences_node({"chat_history": []})  # Default empty chat history
-    #             )
-    #         )
-    #     )
-
 
     def as_generative_chain(self):
         from agents.intent_agent_graph import extract_user_preferences_node
@@ -134,7 +118,7 @@ class SupervisorAgent:
             extra = state.get("extra", {})
             user_prefs = extra.get("user_preferences", {})
 
-            # Optional: pass previous output into context if desired
+            # pass previous output into context if desired
             lookup_results = []
             if "QV_lookup" in state:
                 for msg in state["QV_lookup"].get("input", []):
@@ -143,7 +127,7 @@ class SupervisorAgent:
                 for msg in state["KG_lookup"].get("input", []):
                     lookup_results.append(msg.content)
 
-            # --- ✅ 3. Run prompt through LLM ---
+            # Run prompt through LLM 
             filled_prompt = prompt.partial(
                 scope=scope,
                 intents=intents,
@@ -153,7 +137,7 @@ class SupervisorAgent:
             llm_output = self.llm.invoke(filled_prompt.invoke({"input": chat_input}))
             parsed = JsonOutputParser().invoke(llm_output)
 
-            # --- ✅ 4. Enforce and return ---
+            # Enforce and return 
             return self.enforce_user_preferences(parsed, scope)
 
         return RunnableLambda(supervisor_logic)
