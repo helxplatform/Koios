@@ -18,7 +18,7 @@ import config
 class AgentState(TypedDict):
     input: Annotated[Sequence[BaseMessage], operator.add]
     # Stores a list of the next agents to process the request
-    next: Annotated[List[str], operator.add] 
+    next: List[str]
     # stores previous user interactions 
     chat_history: list[BaseMessage]
     # used to store extracted user preferences (can be more than one)
@@ -92,8 +92,12 @@ def intent_node(state: AgentState) -> AgentState:
     intents = analysis["intents"]
     scope = analysis["scope"]
 
-    state["intents"] = intents
-    state["scope"] = scope
+    state.setdefault("extra", {})  
+
+    state["extra"]["intents"] = intents
+    state["extra"]["scope"] = scope
+
+    return state
 
 
     return state
