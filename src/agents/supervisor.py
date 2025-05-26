@@ -141,3 +141,4 @@ class SupervisorAgent:
             return self.enforce_user_preferences(parsed, scope)
 
         return RunnableLambda(supervisor_logic)
+

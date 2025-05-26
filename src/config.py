@@ -24,6 +24,7 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
 REDIS_GRAPH_NAME = os.getenv("REDIS_GRAPH_NAME", "")
 TMP_DIR = os.getenv("TMP_DIR", os.path.join(os.path.dirname(os.path.realpath(__file__)),'..', 'tmp'))
+ENVIRONMENT= os.getenv("ENVIRONMENT", "production")
 
 
 
@@ -44,6 +45,16 @@ def configure_langfuse(runnable):
             public_key=LANGFUSE_PUBLIC_KEY,
             secret_key=LANGFUSE_SECRET_KEY,
             host=LANGFUSE_HOST,
+            metadata={
+                "koios_version": "v1.0.1",
+                "gaurdian_model": GUARDIAN_MODEL_NAME,
+                "embedding_model": EMB_MODEL_NAME,
+                "generative_model": GEN_MODEL_NAME,
+            },
+            tags=[
+                GEN_MODEL_NAME,
+            ],
+            environment=ENVIRONMENT
         )
         langfuse_handler.auth_check()
         runnable_config = RunnableConfig(callbacks=[langfuse_handler])

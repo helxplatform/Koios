@@ -1,11 +1,16 @@
 # Helper package to create "agents" or more like nodes,
 # By definition an agent is llm prompt with set of tools for llm to utilize in performing a task.
 # Here we don't have tools, hence the quotes around agents.
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
+from typing import List, Dict, Any, Sequence
+from langfuse.decorators import observe, langfuse_context
 
+import logging_util
+
+logger = logging_util.logger
 
 # basic chain with a prompt and a llm with output parsed to a string.
 def create_agent(llm: ChatOpenAI, system_prompt: str):
@@ -33,9 +38,22 @@ def agent_node(state, agent, name):
     result = agent.invoke(state)
     return {"input": [AIMessage(content=result, name=name)]}
 
+@observe()
 def agent_node_dict(state, agent, name):
-    result = agent.invoke(state)
+    trace_id = langfuse_context.get_current_trace_id()
+
+    chat_history = state.get("chat_history", [])
+    input_data = {
+        "input": state["input"],
+        "chat_history": chat_history
+    }
+    result = agent.invoke(input_data)
+    extra = result.get('extra', {})
+    extra.update({"trace_id": trace_id})
     output = {
-        "input": [AIMessage(content=result['output'], name=name, extra_meta_data=result.get('extra', {}))],
-            }
+        "output": AIMessage(content=result.get('output', ''), name=name),
+        "next": result.get('next', ""),
+        "input": state["input"],
+        "extra": extra
+    }
     return output
