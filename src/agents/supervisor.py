@@ -1,8 +1,13 @@
 from langchain_core.output_parsers.json import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnableLambda
-from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableLambda, RunnableParallel, RunnableBranch, RunnablePick, RunnableAssign
+
+from langchain_core.messages import BaseMessage, HumanMessage
+
+from typing import List
+
 from util.llm_helper import LLMFactory
+
 
 
 class SupervisorAgent:
@@ -10,11 +15,14 @@ class SupervisorAgent:
         self.llm = LLMFactory(config)
 
         # members of the workflow that are managed by this supervisor
+        # routes queries to KG lookup or QV lookup based one extracted intent
+        # and user preferences
         self.members = {
-            "KG_lookup": "Ideal for queries that are related to study variables (such which variables measures asthma), "
-                         "Can answer queries that involve studying relationships between biomedical concepts and related study variables (without needing detailed study descriptions)",
-            "QV_lookup": "Best suited for general queries about studies "
-                         "Ideal for direct questions about specific study outcomes or findings, where the system can return relevant abstracts based on pre-existing study descriptions "
+            "KG_lookup": "This agent identifies biomedical concepts in an input, finds related study variables, "
+                         "and provides the study abstracts that include those variables.",
+            "QV_lookup": "This agent searches a database of similar questions, "
+                         "each linked to potential study abstracts that answer them. "
+                         "It then returns study abstracts relevant to the input question."
         }
         self.options = ["FINISH"] + list(self.members.keys())
         # VLLM (our backend llm server) needed a bit of a tweak to send us
@@ -37,11 +45,12 @@ class SupervisorAgent:
         # This prompt tells the supervisor what the roles of it's members are so it makes the selection properly.
         system_prompt = (
             "You are a supervisor tasked with managing a conversation between the"
-            " following workers:  {members}."
-            "\n {member_description}"
-            "Your task is to respond the name of workers that should perform the next task."
-            "Once the task is completed review it for further action. And respond with the next member to call or FINISH to mark its been done."
-            "Return your response as a json object with keys 'next' and the value for that key as the choice you made."
+            " following workers:  {members}.\n {member_description}"
+            "Your task is to determine which agent should handle the request next."
+            "The user’s intent has been classified as {intents} and their query refers to a {scope} entity/entities."
+            "If the request involves a single entity, prefer KG_lookup."
+            "If the request involves multiple entities or comparisons, prefer QV_lookup."
+            "Return your response as a JSON object with keys 'next' and the value as the choice you made."
         )
         # Our team supervisor is an LLM node. It just picks the next agent to process
         # and decides when the work is completed
@@ -49,29 +58,87 @@ class SupervisorAgent:
 
         # This is our final prompt. Here we are getting messages either from a User, or other agents through `input`
         # variable and the supervisor will tell the Langraph runtime what (who to call) next.
-        get_user_input = RunnableLambda(lambda x: {"input": [HumanMessage(content=x['input'])]})
         prompt = ChatPromptTemplate.from_messages(
             [
                 ("user", system_prompt),
                 MessagesPlaceholder(variable_name="input"),
                 (
                     "user",
-                    "Given the conversation above, which members  should act next?"
-                    " Or should we FINISH? Select one of: {options}",
+                    "Given the conversation above, which members should act next?"
+                    "Or should we FINISH? Select one of: {options}",
                 ),
             ]
-        ).partial(options=str(self.options), members=", ".join(self.members.keys()), member_description="\n".join([
-            f"{member}: {self.members[member]}" for member in self.members
-        ]))
-        return get_user_input | prompt
+        ).partial(
+            options=str(self.options),
+            members=", ".join(self.members.keys()),
+            member_description="\n".join([f"{member}: {self.members[member]}" for member in self.members]),
+            scope="multiple",  # Defaulting to multiple entities
+            intents=[1],   # Default intents to 1 or factual queries 
+        )
+                
+        return prompt
+
+
+    def enforce_user_preferences(self, response, query_scope):
+        """
+        Ensures response is structured correctly and `next` is a list.
+        """
+        if not isinstance(response, dict):
+            print("Invalid response format. Resetting to default structure.")
+            response = {"next": ["KG_lookup"] if query_scope == "single" else ["QV_lookup"]}
+
+        next_agent = response.get("next", [])
+
+        # Ensure `next` is always a list
+        if not isinstance(next_agent, list):
+            next_agent = [next_agent] if next_agent else ["supervisor"]
+
+        response["next"] = next_agent
+
+        return response
+
+
 
     def as_generative_chain(self):
+        from agents.intent_agent_graph import extract_user_preferences_node
+
         prompt = self._build_prompt()
-        return (
-                prompt
-                | self.llm #.bind(extra_body={"guided_json": self.guided_choice})
-                | JsonOutputParser()
-        )
 
+        def supervisor_logic(state):
+            # Short-circuit if already done ---
+            if "QV_lookup" in state and state["QV_lookup"].get("input"):
+                return {"next": ["FINISH"]}
+            if "KG_lookup" in state and state["KG_lookup"].get("input"):
+                return {"next": ["FINISH"]}
 
+            # Gather metadata for LLM ---
+            scope = state.get("scope", "multiple")
+            intents = state.get("intents", [1])
+            chat_input = state.get("input", [])
+            extra = state.get("extra", {})
+            user_prefs = extra.get("user_preferences", {})
+
+            # pass previous output into context if desired
+            lookup_results = []
+            if "QV_lookup" in state:
+                for msg in state["QV_lookup"].get("input", []):
+                    lookup_results.append(msg.content)
+            if "KG_lookup" in state:
+                for msg in state["KG_lookup"].get("input", []):
+                    lookup_results.append(msg.content)
+
+            # Run prompt through LLM 
+            filled_prompt = prompt.partial(
+                scope=scope,
+                intents=intents,
+                lookup_results="\n".join(lookup_results[-3:]) or "None"  # last few if applicable
+            )
+
+            llm_output = self.llm.invoke(filled_prompt.invoke({"input": chat_input}))
+            parsed = JsonOutputParser().invoke(llm_output)
+
+            # Enforce and return 
+            return self.enforce_user_preferences(parsed, scope)
+
+        return RunnableLambda(supervisor_logic)
 

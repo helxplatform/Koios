@@ -11,70 +11,100 @@ from langgraph.checkpoint.memory import MemorySaver
 from chains.question_lookup_chain import QuestionLookupChain
 from chains.kg_chain import KGChain
 import config as app_config
+from typing import Sequence, TypedDict, Annotated, Any
+import config
 
 
 class AgentState(TypedDict):
-    # The agent state is the input to each node in the graph
-    # Our state Schema (https://langchain-ai.github.io/langgraph/concepts/low_level/#schema)
-    # The annotation tells the graph that new messages will always
-    # be added to the current states
     input: Annotated[Sequence[BaseMessage], operator.add]
-    # The 'next' field indicates where to route to next
-    next: str
-    chat_history: List = []
+    # Stores a list of the next agents to process the request
+    next: List[str]
+    # stores previous user interactions 
+    chat_history: list[BaseMessage]
+    # used to store extracted user preferences (can be more than one)
+    extra: dict[str, Any]
 
 
-def analyze_intent(query: str) -> List[int]:
-    # Helper function to analyze user intent
+def extract_user_preferences_node(state: AgentState) -> AgentState:
+    chat_history = state.get("chat_history", [])
+    preference_query = (
+        "Analyze the user's past messages and infer preferences for response formatting, "
+        "content restrictions, and preferred response structure. "
+        "Respond in JSON format with keys like 'blocked_terms', 'response_format', etc."
+    )
+
+    llm = LLMFactory(config=app_config)
+    response = llm.invoke([HumanMessage(content=preference_query + "\n\nChat History:\n" + str(chat_history))])
+
+    try:
+        # extract user preference from the response 
+        extracted_preferences = json.loads(response.content)
+    except json.JSONDecodeError:
+        # typically in LLMs, for safety reasons, we can send in a blocked_term
+        extracted_preferences = {"blocked_terms": [], "response_format": "list"}  
+
+    # Store extracted preferences to next
+    state.setdefault("extra", {})
+    state["extra"]["user_preferences"] = extracted_preferences
+
+    return state
+
+
+
+def analyze_intent_and_scope(query: str) -> dict:
+    """
+    Analyzes the user intent and determines what kind of question they're interested in
+    """
+    # what type of question is a user asking?
     intent_cat_query = (
-        f"Please analyze the potential intent of the following query and identify it as one or more of the given categories: "
+        f"Please analyze the intent of the following query and classify it into one or more of the given categories: "
         f"'{query}'. Categories: 1. Factual Queries, 2. Explanatory Inquiries, 3. Troubleshooting Assistance, "
         f"4. Decision Support, 5. Learning Support, 6. Personal Advice, 7. Data Processing, 8. Research Questions, 9. Not Research Related. "
         "Respond only with the category numbers."
     )
-    # Run the LLM to analyze the query
+    # what is the scope of their query? a single or multiple node response
+    scope_query = (
+        f"Determine if the following query refers to a single entity or multiple entities: '{query}'. "
+        "Respond with 'single' or 'multiple'."
+    )
+
     llm = LLMFactory(config=app_config)
-    response = llm([HumanMessage(content=intent_cat_query)])
-    # Convert the response to a list of integers
-    return list(map(int, response.content.split(",")))
 
+    intent_response = llm.invoke([HumanMessage(content=intent_cat_query)])
+    scope_response = llm.invoke([HumanMessage(content=scope_query)])
 
-def log_query_intent(query: str, intents: List[int], filename: str = "query_intents.json"):
-    # Helper function to log queries and intents to a JSON file
+    # Parse the responses
     try:
-        # Load existing data
-        with open(filename, 'r') as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        # If file doesn't exist or is empty, initialize an empty list
-        data = []
+        intents = list(map(int, intent_response.content.split(",")))
+    except ValueError:
+        intents = []
 
-    # Append new query and intents
-    data.append({
-        "query": query,
-        "intents": intents
-    })
-    
-    # Write updated data to the file
-    with open(filename, 'w') as f:
-        json.dump(data, f, indent=4)
+    # Expecting 'single' or 'multiple'
+    scope = scope_response.content.strip().lower()  
 
-# Define the intent node
+    return {"intents": intents, "scope": scope}
+
 def intent_node(state: AgentState) -> AgentState:
-    # Get the current user input
-    query = state['input'][-1].content
-    # Analyze the intent of the query
-    intents = analyze_intent(query)
-    # Save the intent categories to the state (you can log or process it further)
-    state['intents'] = intents
-    
-    # Log the query and intents to a JSON file
-    log_query_intent(query, intents)
-    
-    # After identifying the intent, route to the appropriate agent or supervisor
-    state['next'] = "supervisor"  # or another agent based on intent
+    # logs the detected intent and scope and ensures there are no duplicate
+    # agents in next
+    query = state["input"][-1].content
+    analysis = analyze_intent_and_scope(query)
+    intents = analysis["intents"]
+    scope = analysis["scope"]
+
+    state.setdefault("extra", {})  
+
+    state["extra"]["intents"] = intents
+    state["extra"]["scope"] = scope
+
     return state
 
+
+    return state
+
+
+
+    
 
 # Create our agents (KG lookup and QV lookup)
 kg_lookup_agent_node = functools.partial(agent_node_dict, agent=KGChain(app_config).as_generative_chain(), name="KG_lookup_agent")
@@ -85,27 +115,30 @@ members = supervisor_agent.members
 # Initialize the workflow with our state schema.
 workflow = StateGraph(AgentState)
 
-# Add the intent detection node
+# Add the intent and preference nodes
 workflow.add_node("intent", intent_node)
-# Add the nodes to the workflow
+workflow.add_node("extract_user_preferences", extract_user_preferences_node)
+
+# Add KG and QV nodes
 workflow.add_node("KG_lookup", kg_lookup_agent_node)
 workflow.add_node("QV_lookup", qv_lookup_agent_node)
+
+# Add the supervisor node
 workflow.add_node("supervisor", supervisor_agent.as_generative_chain())
 
+# Routing sequence
+workflow.add_edge(START, "intent")
+workflow.add_edge("intent", "extract_user_preferences")
+workflow.add_edge("extract_user_preferences", "supervisor")
 
-# Define how members are laid out (researcher, comedian, etc.)
+# After each lookup, return to supervisor
 for member in members:
-    workflow.add_edge(member, END)  # Ends after running the agent unless routed to the supervisor
+    workflow.add_edge(member, "supervisor")
 
-# The supervisor populates the "next" field in the graph state which routes to a node or finishes
+# Supervisor decides where to go next or ends
 conditional_map = {k: k for k in members}
 conditional_map["FINISH"] = END
-# Connect supervisor node with all the members
 workflow.add_conditional_edges("supervisor", lambda x: x["next"], conditional_map)
-
-# Add the entry point, making the supervisor the one that accepts user input
-workflow.add_edge(START, "intent")  # Intent analysis is the first step, then routes to supervisor
-workflow.add_edge("intent", "supervisor")
 
 # Set up memory
 memory = MemorySaver()
@@ -116,17 +149,21 @@ graph = workflow.compile(checkpointer=memory)
 if __name__ == "__main__":
     # Test code to run
     graph.get_graph().print_ascii()
-    thread_config = {"configurable": {"thread_id": "1"}}
-    
+    from langfuse.callback import CallbackHandler
+    langfuse_callback = CallbackHandler(
+        host=config.LANGFUSE_HOST,
+        secret_key=config.LANGFUSE_SECRET_KEY,
+        public_key=config.LANGFUSE_PUBLIC_KEY
+    )
+    thread_config = {"configurable": {"thread_id": "1"}, "callbacks": [langfuse_callback]}
+
     for s in graph.stream(
             {
-                # Mimicking previous interactions.
                 "chat_history": [
-                    ("jokes around Heart", "the heart is melting"),
                 ],
                 # Current question.
                 "input": [
-                    HumanMessage(content="explain that more"),
+                    HumanMessage(content="What variables and studies are around sickle cell?"),
                 ]
             }, config=thread_config
     ):
@@ -134,18 +171,4 @@ if __name__ == "__main__":
             print(s)
             state = graph.get_state(thread_config)
             print(state)
-            # Prints the detected intents
-
-
-# the JSON storage file and intents should look like this 
-
-# [
-#     {
-#         "query": "explain that more",
-#         "intents": [2, 5]
-#     },
-#     {
-#         "query": "how to troubleshoot this error?",
-#         "intents": [3]
-#     }
-# ]
+       
