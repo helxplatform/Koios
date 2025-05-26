@@ -25,6 +25,7 @@ REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
 REDIS_GRAPH_NAME = os.getenv("REDIS_GRAPH_NAME", "")
 TMP_DIR = os.getenv("TMP_DIR", os.path.join(os.path.dirname(os.path.realpath(__file__)),'..', 'tmp'))
 ENVIRONMENT= os.getenv("ENVIRONMENT", "production")
+APP_ID = os.getenv("APP_ID", "QV_KG_NO_ROUTE")
 
 
 
@@ -53,6 +54,7 @@ def configure_langfuse(runnable):
             },
             tags=[
                 GEN_MODEL_NAME,
+                APP_ID
             ],
             environment=ENVIRONMENT
         )
