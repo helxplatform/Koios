@@ -82,7 +82,7 @@ Always cite specific studies with their IDs when they appear in your answer.
                         "kg_context": x["kg_context"],
                         "qv_context": x["qv_context"],
                         "chat_history": x["chat_history"]
-                    }) | self.COMBINED_ANSWER_PROMPT | self.llm | StrOutputParser(),
+                    }) | self.COMBINED_ANSWER_PROMPT | self.llm.with_config(name="answer_generation") | StrOutputParser(),
                     "extra": RunnableLambda(lambda x: {"kg_extra": x["kg_extra"]})
                 })
             ),

@@ -66,7 +66,7 @@ class QuestionLookupChain:
                     run_name="format_chat_history"
                 )
                 | self.REPHRASE_PROMPT
-                | self.llm
+                | self.llm.with_config(name='rephrase_user_query')
                 | StrOutputParser()
             ),
             # no chat history , pass the whole question
@@ -92,7 +92,8 @@ class QuestionLookupChain:
             }
         ).with_types(input_type=Question).with_config(run_name="question_lookup_chain")
 
-        answer_chain = (self.ANSWER_GENERATION_PROMPT | self.llm | StrOutputParser())
+        answer_chain = ((self.ANSWER_GENERATION_PROMPT | self.llm | StrOutputParser())
+                        .with_config(name='answer_generation'))
         generative_chain = (_inputs | RunnableParallel(
             {
                 "output":  RunnableLambda(lambda x: {

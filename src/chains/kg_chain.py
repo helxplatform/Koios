@@ -56,7 +56,7 @@ class KGChain:
     #  Begin Chain definitions
     ####
     def as_concept_extraction_chain(self):
-        return (self.CONCEPT_EXTRACTION_PROMPT | self.llm | StrOutputParser()).with_config(
+        return (self.CONCEPT_EXTRACTION_PROMPT | self.llm.with_config(name='concept_extraction') | StrOutputParser()).with_config(
             run_name="concept_extraction")
 
     def as_retrival_chain(self):
