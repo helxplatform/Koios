@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from langserve import add_routes
 import langfuse
 import config
-from agents.route_agentic_graph import graph
+from agents.combined_context_graph import graph
 import logging
 
 logging.basicConfig(level=logging.INFO)
