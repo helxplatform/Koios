@@ -5,12 +5,14 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
-from typing import List, Dict, Any, Sequence
 from langfuse.decorators import observe, langfuse_context
+from guardrails.input_guard import InputGuard
+import config as app_config
 
 import logging_util
 
 logger = logging_util.logger
+
 
 # basic chain with a prompt and a llm with output parsed to a string.
 def create_agent(llm: ChatOpenAI, system_prompt: str):
@@ -27,6 +29,7 @@ def create_agent(llm: ChatOpenAI, system_prompt: str):
     )
     return prompt | llm | StrOutputParser()
 
+
 # Nodes in lang graph are just function calls that just accept the Langraph State.
 # the langraph state is where agents (chains) and other nodes more generally write to, so it's accessible by others.
 # more info (https://langchain-ai.github.io/langgraph/concepts/low_level/#stategraph)
@@ -38,22 +41,43 @@ def agent_node(state, agent, name):
     result = agent.invoke(state)
     return {"input": [AIMessage(content=result, name=name)]}
 
+
 @observe()
 def agent_node_dict(state, agent, name):
     trace_id = langfuse_context.get_current_trace_id()
 
     chat_history = state.get("chat_history", [])
+    # this is the input for the next agent
     input_data = {
         "input": state["input"],
-        "chat_history": chat_history
+        "chat_history": chat_history,
+        "extra": state.get("extra", {}),
+        "user_intent": state.get("user_intent", {})
     }
     result = agent.invoke(input_data)
     extra = result.get('extra', {})
     extra.update({"trace_id": trace_id})
+    # this output is what the next agent will see.
     output = {
         "output": AIMessage(content=result.get('output', ''), name=name),
         "next": result.get('next', ""),
         "input": state["input"],
-        "extra": extra
+        "extra": extra,
+        "user_intent": result.get("user_intent", {})
     }
     return output
+
+
+def guardrails_node(state):
+    # Process through guardrails
+    guardrails_instance = InputGuard(app_config)
+    result = guardrails_instance.invoke({"input": state["input"]}) #[-1].content})
+
+    if "I'm sorry, I can't respond to that." in result.get("output", ""):
+        state["next"] = "FINISH"
+        state["output"] = AIMessage(content=result.get("output", "I'm sorry, I can't respond to that."))
+        return state
+
+    state["next"] = "continue"
+
+    return state

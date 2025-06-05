@@ -8,8 +8,7 @@ from langgraph.graph import END, StateGraph, START
 from agents.utils import *
 from agents.supervisor import SupervisorAgent
 from langgraph.checkpoint.memory import MemorySaver
-from chains.question_lookup_chain import QuestionLookupChain
-from chains.kg_chain import KGChain
+from chains import QuestionLookupChain, KGChain
 import config as app_config
 from typing import Sequence, TypedDict, Annotated, Any
 import config
