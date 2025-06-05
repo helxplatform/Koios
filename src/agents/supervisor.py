@@ -100,7 +100,7 @@ class SupervisorAgent:
 
 
     def as_generative_chain(self):
-        from agents.intent_agent_graph import extract_user_preferences_node
+
 
         prompt = self._build_prompt()
 

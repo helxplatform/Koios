@@ -39,8 +39,16 @@ Knowledge Graph Context:
 Study abstract Context:
 {qv_context}
 
-Always cite specific studies with their IDs when they appear in your answer.
+Always cite specific studies with their IDs when they appear in your answer. Here is what we know about the user asking the question:
+<user_persona>
+    {user_persona}
+</user_persona>
 """),
+    # @TODO test out chain of draft
+    # Think step by step, but only keep a minimum draft for each thinking step, with 5 words at most.
+    # Return the answer at the end of the response after the following separator  `$!`.
+    #
+    # """),
             MessagesPlaceholder(variable_name="chat_history"),
             ("user", "{input}")
         ])
@@ -54,9 +62,10 @@ Always cite specific studies with their IDs when they appear in your answer.
             "kg_retrieval": self.kg_chain.as_retrival_chain().with_config(run_name="kg_retrieval"),
             "qv_retrieval": self.qv_chain.as_retrieval_chain(lookup_parameters=lookup_parameters).with_config(run_name="qv_retrieval"),
             "input": lambda x: x["input"],
-            "chat_history": lambda x: format_chat_history(x.get("chat_history", []))
+            "chat_history": lambda x: format_chat_history(x.get("chat_history", [])),
+            "user_intent": lambda x: x.get("user_intent", {})
         })
-    
+
     def as_generative_chain(self, lookup_parameters=None):
         """Chain to combine results and generate an answer"""
         if lookup_parameters is None:
@@ -70,7 +79,8 @@ Always cite specific studies with their IDs when they appear in your answer.
             "qv_context": x.get("qv_retrieval", ""),
             "chat_history": x["chat_history"],
             "has_context": bool(x.get("kg_retrieval", {}).get("context", {}).get("context", "")) or bool(x.get("qv_retrieval", "")),
-            "kg_extra": x.get("kg_retrieval", {}).get("context", {}).get("extra_data", {})
+            "kg_extra": x.get("kg_retrieval", {}).get("context", {}).get("extra_data", {}),
+            "user_persona": x.get("user_intent", {}).get("as_prompt", "")
         }).with_config(run_name="combined_chain_data")
 
         response_branch = RunnableBranch(
@@ -81,7 +91,8 @@ Always cite specific studies with their IDs when they appear in your answer.
                         "input": x["input"],
                         "kg_context": x["kg_context"],
                         "qv_context": x["qv_context"],
-                        "chat_history": x["chat_history"]
+                        "chat_history": x["chat_history"],
+                        "user_persona": x["user_persona"]
                     }) | self.COMBINED_ANSWER_PROMPT | self.llm.with_config(name="answer_generation") | StrOutputParser(),
                     "extra": RunnableLambda(lambda x: {"kg_extra": x["kg_extra"]})
                 })

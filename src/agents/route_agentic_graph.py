@@ -1,8 +1,5 @@
 import functools
-import operator
 
-from typing import Sequence, TypedDict, Annotated, List, Dict, Any, Optional
-from langchain_core.messages import BaseMessage, HumanMessage
 
 from langgraph.graph import END, StateGraph, START
 
@@ -12,22 +9,12 @@ from agents.supervisor import SupervisorAgent
 from langgraph.checkpoint.memory import MemorySaver
 from chains.kg_chain import KGChain
 from chains.question_lookup_chain import QuestionLookupChain
+
 import config as app_config
 from pydantic import BaseModel, Field
-from agents.intent_agent_graph import intent_node, extract_user_preferences_node 
-
-
-# The agent state is the input to each node in the graph
-# Our state Schema (https://langchain-ai.github.io/langgraph/concepts/low_level/#schema)
-class AgentState(TypedDict):
-    # The annotation tells the graph that new messages will always
-    # be added to the current states
-    input: str
-    # The 'next' field indicates where to route to next
-    next: Annotated[List[str], operator.add]
-    chat_history: List[BaseMessage]
-    extra: Dict[str, Any]
-
+from agents.intent_agent_graph import intent_node, extract_user_preferences_node
+from models.agent_state import AgentState
+from agents.utils import guardrails_node
 
 
 # Create our agents (KG lookup and QV lookup)
@@ -36,21 +23,6 @@ qv_lookup_agent_node = functools.partial(agent_node_dict, agent=QuestionLookupCh
 supervisor_agent = SupervisorAgent(app_config)
 supervisor_agent_node  = functools.partial(agent_node_dict, agent=supervisor_agent.as_generative_chain(), name="supervisor")
 members = supervisor_agent.members
-
-guardrails_instance = InputGuard(app_config)
-
-def guardrails_node(state: AgentState) -> AgentState:
-    # Process through guardrails
-    result = guardrails_instance.invoke({"input": state["input"]})
-    
-    if "I'm sorry, I can't respond to that." in result.get("output", ""):
-        state["next"] = "FINISH"
-        state["output"] = AIMessage(content=result.get("output", "I'm sorry, I can't respond to that."))
-        return state
-        
-    state["next"] = "supervisor"
-    
-    return state
 
 # Initialize the workflow with our state schema.
 workflow = StateGraph(AgentState)
