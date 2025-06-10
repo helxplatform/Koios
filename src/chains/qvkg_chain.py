@@ -95,6 +95,7 @@ Always cite specific studies with their IDs when they appear in your answer. Her
                         "user_persona": x["user_persona"]
                     }) | self.COMBINED_ANSWER_PROMPT | self.llm.with_config(name="answer_generation") | StrOutputParser(),
                     "extra": RunnableLambda(lambda x: {"kg_extra": x["kg_extra"]})
+
                 })
             ),
             RunnableLambda(lambda x: {
