@@ -326,7 +326,7 @@ class KGChain:
 if __name__ == "__main__":
     kg_agent = KGChain(config=app_config)
     # user_q = Question(chat_history=[], input="what studies are there about sickle cell?")
-    user_q = Question(chat_history=[], input="sickle cell")
+    user_q = Question(chat_history=[], input="variables around choroidal neovascularization")
     qa_chain = kg_agent.as_generative_chain()
     response = asyncio.run(qa_chain.ainvoke(user_q.dict()))
     import json

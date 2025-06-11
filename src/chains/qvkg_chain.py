@@ -26,7 +26,7 @@ class QVKGChain:
         
         # Hardcoded combined answer generation prompt
         self.COMBINED_ANSWER_PROMPT = ChatPromptTemplate([
-            ("system", """You are a biomedical expert tasked with answering questions about scientific studies using the provided information.
+            ("user", """You are a biomedical expert tasked with answering questions about scientific studies using the provided information.
 You have two sources of information:
 1. Knowledge Graph Data: This outlines relationships between biomedical concepts and variables, which may be linked to the same or different studies.
 2. Study abstract Data: This contains textual descriptions and contextual information about the studies themselves.
@@ -95,6 +95,7 @@ Always cite specific studies with their IDs when they appear in your answer. Her
                         "user_persona": x["user_persona"]
                     }) | self.COMBINED_ANSWER_PROMPT | self.llm.with_config(name="answer_generation") | StrOutputParser(),
                     "extra": RunnableLambda(lambda x: {"kg_extra": x["kg_extra"]})
+
                 })
             ),
             RunnableLambda(lambda x: {
@@ -103,8 +104,8 @@ Always cite specific studies with their IDs when they appear in your answer. Her
             })
         ).with_config(run_name="response_branch")
         qvkg_chain = retrieval_chain | combined_chain_data | response_branch
-        
-        return config.configure_langfuse(qvkg_chain)
+
+        return config.configure_langfuse(qvkg_chain.with_config(run_name="qvkg_lookup_generation"))
 if __name__ == "__main__":
     import asyncio
     import json

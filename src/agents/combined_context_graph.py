@@ -6,21 +6,55 @@ import config
 from agents.utils import *
 from models.agent_state import AgentState
 from langgraph.checkpoint.memory import MemorySaver
-from chains import QVKGChain, UserIntentChain
+from chains import *
 import config as app_config
 
+# Graph structure
+"""
+                               +-----------+                     
+                               | __start__ |                     
+                               +-----------+                     
+                                      *                          
+                                      *                          
+                                      *                          
+                              +------------+                     
+                              | guardrails |.                    
+                              +------------+ ....                
+                             ..                  ....            
+                          ...                        ....        
+                        ..                               ....    
+      +----------------------------+                         ... 
+      | query_relevance_classifier |                           . 
+      +----------------------------+                           . 
+              ..           ..                                  . 
+            ..               ..                                . 
+          ..                   ..                              . 
++--------------+                 ..                            . 
+| intent_agent |                  .                            . 
++--------------+                  .                            . 
+        *                         .                            . 
+        *                         .                            . 
+        *                         .                            . 
++--------------+            +----------+                     ... 
+| lookup_agent |            | doc_node |                 ....    
++--------------+*****       +----------+             ....        
+                     *****          *            ....            
+                          *****      *       ....                
+                               ***   *    ...                    
+                                +---------+                      
+                                | __end__ |                      
+                                +---------+           
 
-# The agent state is the input to each node in the graph
-# Our state Schema (https://langchain-ai.github.io/langgraph/concepts/low_level/#schema)
+"""
 
-
-# Create our agents (KG lookup and QV lookup)
 qv_kg_lookup_agent_node = functools.partial(agent_node_dict, agent=QVKGChain(app_config).as_generative_chain(),
                                          name="lookup_agent")
 intent_agent_node = functools.partial(agent_node_dict, agent=UserIntentChain(app_config).as_generative_chain(),
                                       name="intent_agent")
-
-
+query_routing_node = functools.partial(agent_node_dict, agent=QueryRelevanceClassifierChain(app_config).as_generative_chain(),
+                                      name="query_relevance_classifier")
+doc_node = functools.partial(agent_node_dict, agent=DocumentationGenerationChain(app_config).as_generative_chain(),
+                                      name="doc_node")
 # Initialize the workflow with our state schema.
 workflow = StateGraph(AgentState)
 
@@ -28,12 +62,18 @@ workflow = StateGraph(AgentState)
 workflow.add_node("guardrails", guardrails_node)
 workflow.add_node("lookup_agent", qv_kg_lookup_agent_node)
 workflow.add_node("intent_agent", intent_agent_node)
+workflow.add_node("query_relevance_classifier", query_routing_node)
+workflow.add_node("doc_node", doc_node)
 
 workflow.add_edge(START, "guardrails")
+# workflow.add_edge("guardrails", "query_relevance_classifier")
 workflow.add_conditional_edges("guardrails", lambda x: x["next"],
-                               {"continue": "intent_agent", "FINISH": END})
+                               {"continue": "query_relevance_classifier", "FINISH": END})
+workflow.add_conditional_edges("query_relevance_classifier", lambda x: x["next"],
+                               {"lookup": "intent_agent", "documentation": "doc_node"})
 workflow.add_edge("intent_agent", "lookup_agent")
 workflow.add_edge("lookup_agent", END)
+workflow.add_edge("doc_node", END)
 
 langfuse_callback = CallbackHandler(
     host=config.LANGFUSE_HOST,
@@ -42,7 +82,7 @@ langfuse_callback = CallbackHandler(
 )
 callback_manager = CallbackManager([langfuse_callback])
 # Compile the graph with memory
-graph = workflow.compile(checkpointer=MemorySaver()).with_config(callbacks=callback_manager)
+graph = workflow.compile(checkpointer=MemorySaver()) #.with_config(callbacks=callback_manager)
 
 if __name__ == "__main__":
     # Test code to run
@@ -63,7 +103,7 @@ if __name__ == "__main__":
                     # ("wHr ", "the heart is melting"),
                 ],
                 # Current question.
-                "input": "What variables and studies are around sickle cell?",
+                "input": "What kind of question should i ask?",
 
             }, config=thread_config
     ):

@@ -2,3 +2,5 @@ from chains.qvkg_chain import QVKGChain
 from chains.kg_chain import KGChain
 from chains.question_lookup_chain import QuestionLookupChain
 from chains.user_intent_chain import UserIntentChain
+from chains.query_relevance_classifier_chain import QueryRelevanceClassifierChain
+from chains.documentation_generation_chain import DocumentationGenerationChain

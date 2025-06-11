@@ -1,5 +1,5 @@
 from langfuse import Langfuse
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_ollama.embeddings import OllamaEmbeddings
 import os
 from pathlib import Path
 LLM_URL = os.getenv('LLM_URL', 'https://vllm.apps.renci.org/v1').rstrip('/')
@@ -18,15 +18,14 @@ LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://localhost:3000")
 LLM_SERVER_TYPE = os.getenv("LLM_SERVER_TYPE", "VLLM")
 ollama_emb = OllamaEmbeddings(model=EMB_MODEL_NAME, base_url=EMBEDDING_URL)
-ollama_emb.query_instruction = ""
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
 REDIS_GRAPH_NAME = os.getenv("REDIS_GRAPH_NAME", "")
 TMP_DIR = os.getenv("TMP_DIR", os.path.join(os.path.dirname(os.path.realpath(__file__)),'..', 'tmp'))
-ENVIRONMENT= os.getenv("ENVIRONMENT", "production")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
 APP_ID = os.getenv("APP_ID", "QV_KG_NO_ROUTE")
-
+GEN_API_KEY = os.getenv("GEN_API_KEY", "EMPTY")
 
 
 if LANGFUSE_ENABLED:
@@ -48,13 +47,14 @@ def configure_langfuse(runnable):
             host=LANGFUSE_HOST,
             metadata={
                 "koios_version": "v1.0.1",
-                "gaurdian_model": GUARDIAN_MODEL_NAME,
+                "guardian_model": GUARDIAN_MODEL_NAME,
                 "embedding_model": EMB_MODEL_NAME,
                 "generative_model": GEN_MODEL_NAME,
             },
             tags=[
                 GEN_MODEL_NAME,
-                APP_ID
+                APP_ID,
+                ENVIRONMENT
             ],
             environment=ENVIRONMENT
         )
