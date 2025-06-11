@@ -46,7 +46,7 @@ class QueryRelevanceClassifierChain:
                 "next": x
             }
         )
-        return app_config.configure_langfuse(generative_chain)
+        return app_config.configure_langfuse(generative_chain.with_config(run_name="query_classification_generation"))
 
     ######
     #  Begin langfuse interactions (prompt definitions)

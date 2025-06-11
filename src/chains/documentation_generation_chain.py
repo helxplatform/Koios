@@ -32,9 +32,9 @@ class DocumentationGenerationChain:
     ######
     #  Begin Chain definitions
     ####
-    def as_routing_chain(self):
+    def _as_doc_gen(self):
         run_config = RunnableConfig(
-            run_name="documentaion_generation",
+            run_name="documentation_generation",
         )
 
         return (self.PROMPT |
@@ -47,7 +47,7 @@ class DocumentationGenerationChain:
             return stream.read()
 
     def as_generative_chain(self):
-        extraction_chain = self.as_routing_chain().with_config(run_name="query_classification")
+        extraction_chain = self._as_doc_gen()
         generative_chain = RunnableLambda(lambda x: {
             'input': x['input'],
             'documentation': self._get_about_readme_contents()
@@ -56,7 +56,7 @@ class DocumentationGenerationChain:
                 "output": x
             }
         )
-        return app_config.configure_langfuse(generative_chain)
+        return app_config.configure_langfuse(generative_chain.with_config(run_name="documentation_generation"))
 
     ######
     #  Begin langfuse interactions (prompt definitions)

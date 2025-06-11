@@ -52,7 +52,7 @@ class UserIntentChain:
                 }
             }
         )
-        return config.configure_langfuse(generative_chain)
+        return config.configure_langfuse(generative_chain.with_config(run_name="user_intent_generation"))
 
     @staticmethod
     def __format_as_prompt_snippet(generation_output: dict):
