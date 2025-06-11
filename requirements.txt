@@ -13,6 +13,8 @@ openai
 tiktoken
 beautifulsoup4
 langchain-openai
+langchain-ollama
+langchain-google-vertexai
 langgraph
 falkordb
 pandas
