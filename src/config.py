@@ -26,6 +26,7 @@ TMP_DIR = os.getenv("TMP_DIR", os.path.join(os.path.dirname(os.path.realpath(__f
 ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
 APP_ID = os.getenv("APP_ID", "QV_KG_NO_ROUTE")
 GEN_API_KEY = os.getenv("GEN_API_KEY", "EMPTY")
+SERVER_ROOT_URL=os.getenv("ROOT_URL", "/agent")
 
 
 if LANGFUSE_ENABLED:
