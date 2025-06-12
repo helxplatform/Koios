@@ -7,9 +7,9 @@ def format_chat_history(chat_history: List[Tuple[str, str]]) -> List:
     """Formats chat history as AI and Human messages"""
     buffer = []
     for human, ai in chat_history:
-        soup = BeautifulSoup(human, features="html.parser")
+        soup = BeautifulSoup(human or "", features="html.parser")
         buffer.append(HumanMessage(content=soup.get_text()))
-        soup = BeautifulSoup(ai, features="html.parser")
+        soup = BeautifulSoup(ai or "", features="html.parser")
         buffer.append(AIMessage(content=soup.get_text()))
     return buffer
 
