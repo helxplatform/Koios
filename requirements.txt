@@ -8,13 +8,14 @@ qdrant-client
 langserve[all]
 pydantic
 langchainhub
-langfuse
+langfuse==2.60.7
 openai
 tiktoken
 beautifulsoup4
 langchain-openai
 langchain-ollama
 langchain-google-vertexai
+langchain-google-genai
 langgraph
 falkordb
 pandas

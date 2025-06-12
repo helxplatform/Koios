@@ -9,6 +9,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 # Create FastAPI app
 app = FastAPI(
     title="Koios agentic mode"
@@ -28,10 +29,11 @@ app.add_middleware(
 add_routes(
     app=app,
     runnable=graph,
-    path="/agent"
+    path=config.SERVER_ROOT_URL.rstrip("/")
 )
 
-@app.get("/agent/score/{trace_id}/{score}")
+
+@app.get(f"{config.SERVER_ROOT_URL.rstrip('/')}/score/{{trace_id}}/{{score}}")
 async def trace(trace_id: str, score: str):
     """
     Give a score to a trace
