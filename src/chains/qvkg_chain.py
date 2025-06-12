@@ -94,7 +94,7 @@ Always cite specific studies with their IDs when they appear in your answer. Her
                         "chat_history": x["chat_history"],
                         "user_persona": x["user_persona"]
                     }) | self.COMBINED_ANSWER_PROMPT | self.llm.with_config(name="answer_generation") | StrOutputParser(),
-                    "extra": RunnableLambda(lambda x: {"knowledge_graph": x["kg_extra"]})
+                    "extra": RunnableLambda(lambda x: {"knowledge_graph": x["kg_extra"].get("knowledge_graph", {})})
 
                 })
             ),
