@@ -72,10 +72,9 @@ def guardrails_node(state):
     # Process through guardrails
     guardrails_instance = InputGuard(app_config)
     result = guardrails_instance.invoke({"input": state["input"]}) #[-1].content})
-
     if "I'm sorry, I can't respond to that." in result.get("output", ""):
         state["next"] = "FINISH"
-        state["output"] = AIMessage(content=result.get("output", "I'm sorry, I can't respond to that."))
+        state["output"] = AIMessage(content="I'm sorry, but I can't answer that question. I’m a assistant designed exclusively to support inquiries related to  NHLBI - BioData Catalyst research studies. Please redirect your question to focus on topics related to NHLBI-supported medical research studies.")
         return state
 
     state["next"] = "continue"
