@@ -1,3 +1,4 @@
+import json
 from typing import Any
 from langchain_community.vectorstores import Qdrant
 from langchain_community.docstore.document import Document
@@ -33,7 +34,11 @@ class CustomQdrant(Qdrant):
         metadata["score"] = scored_point.score
         raw_study, status = get_study_data(study_id)
         if status == 200:
-            page_content = f"{raw_study['study_name']} ({raw_study['study_id']}): \n {raw_study['description']}"
+            # pass this down as a json string to have more structural control.
+            page_content = json.dumps({
+                "title": f"{raw_study['study_name']} ({raw_study['study_id']}):",
+                "abstract": f"{raw_study['description']}",
+            })
         else:
             page_content = ""
         return Document(
