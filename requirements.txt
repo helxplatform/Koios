@@ -16,6 +16,7 @@ langchain-openai
 langchain-ollama
 langchain-google-vertexai
 langchain-google-genai
+langgraph-checkpoint==2.0.26
 langgraph
 falkordb
 pandas
