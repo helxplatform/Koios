@@ -1,12 +1,10 @@
+
 from langchain_core.runnables import (
     RunnableBranch,
     RunnableLambda,
     RunnableParallel,
-    RunnablePick,
-    RunnableAssign
-
 )
-from concurrent.futures import ThreadPoolExecutor
+import html
 from langchain_core.prompts import (
     ChatPromptTemplate,
     MessagesPlaceholder,
@@ -231,7 +229,7 @@ class KGChain:
 
         # Concatenate the `variable_name`, `variable_id`, and `variable_desc`
         summary_data_frame['variable_info'] = summary_data_frame.apply(
-            lambda row: '\n'.join([f"\t {name} ({var_id}): {desc}"
+            lambda row: '\n'.join([f'\t <variable id="{var_id}">{name} ({var_id}): {desc}</variable>'
                                    for name, var_id, desc in zip(
                     row['variable_name_list'].split(', '),
                     row['variable_id_list'].split(', '),
@@ -265,8 +263,10 @@ class KGChain:
         """
         docs = []
         for _, row in rows.iterrows():
+            raw_desc = row['description']
+            escaped_desc = html.escape(raw_desc)
             doc = {
-                "page_content": f"{row['description']}\n\n Variable_info: \n{row['variable_info']}",
+                "page_content": f"<abstract>{escaped_desc}</abstract><variables>\n{row['variable_info']}</variables>",
                 "metadata": {
                     "study_id": row['study_id'],
                     "study_name": row['study_name'],
@@ -275,10 +275,14 @@ class KGChain:
             }
             docs.append(doc)
         docs_str = [
-            f"\n {doc['metadata']['study_name']} ({doc['metadata']['study_id']}): \n {doc['page_content']}"
+            (f'<study id="{doc["metadata"]["study_id"]}">'
+             f'<title>{doc["metadata"]["study_name"]} ({doc['metadata']["study_id"]}):</title>'
+             f'{doc["page_content"]}'
+             f'</study>')
             for doc in docs
         ]
-        return "\n".join(docs_str)
+        joined_docs = "\n\n".join(docs_str)
+        return f"<studies>{joined_docs}</studies>"
 
     def _get_studies_as_runnable(self):
         return RunnableLambda(

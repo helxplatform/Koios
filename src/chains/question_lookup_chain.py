@@ -1,5 +1,8 @@
+import html
+
 import config
 import config as app_config
+import json
 from databases.qdrant import CustomQdrant
 from langchain_core.runnables import (
     RunnableBranch,
@@ -130,9 +133,18 @@ class QuestionLookupChain:
         document_prompt = PromptTemplate.from_template(template="{page_content}")
         for document in docs:
             if document.metadata['study_id'] not in docs_seen:
-                doc_strings.append(format_document(document, document_prompt))
+                if not document.page_content:
+                    continue
+                document.page_content = json.loads(document.page_content)
+                raw_page_content = document.page_content['abstract']
+                safe_page_content = html.escape(raw_page_content)
+
+                doc_strings.append(f'<study id="{document.metadata['study_id']}">'
+                                   f'<title>{document.page_content['title']}</title>'
+                                   f'<abstract>{safe_page_content}</abstract></study>')
                 docs_seen.append(document.metadata['study_id'])
-        return document_separator.join(doc_strings)
+        joined_docs = document_separator.join(doc_strings)
+        return f"<studies>{joined_docs}</studies>"
 
 
 # To test run this code as main...
