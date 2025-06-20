@@ -21,7 +21,7 @@ from util.chat_history_util import format_chat_history
 from util.llm_helper import LLMFactory
 
 class QVKGChain:
-    def __init__(self, config, default_k=20):
+    def __init__(self, config, default_k=10):
         self.config = config
         self.kg_chain = KGChain(config=config)
         self.qv_chain = QuestionLookupChain(config=config)
