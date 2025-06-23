@@ -81,7 +81,7 @@ class QVKGChain:
 
         # --- 3. Join the unique study blocks into a final string ---
         combined_docs: List[str] = list(study_data.values())
-        return separator.join(combined_docs)
+        return "<studies>" + separator.join(combined_docs) + "</studies>"
 
 
     def as_generative_chain(self, lookup_parameters=None):
