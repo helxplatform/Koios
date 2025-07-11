@@ -1,5 +1,5 @@
 
-# DugBot - Biomedical Research Study Discovery Assistant
+# DugBot 
 
 DugBot is an advanced AI-powered research assistant designed to help researchers discover and understand biomedical studies through natural language queries. Built on LangGraph and LangChain frameworks, it provides intelligent search capabilities over the NHLBI-BioData Catalyst research studies using both vector-based similarity search and knowledge graph traversal.
 
