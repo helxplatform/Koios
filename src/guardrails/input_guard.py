@@ -3,7 +3,10 @@ from nemoguardrails import RailsConfig
 import os
 import tempfile
 from langfuse import Langfuse
-from langchain_community.llms import Ollama
+# from langchain_community.llms import Ollama
+from util.llm_helper import LLMFactory
+from langchain_core.language_models.chat_models import BaseChatModel
+
 
 class InputGuard:
     _instance = None
@@ -25,11 +28,9 @@ class InputGuard:
                                                       rails_prompt=rails_prompt
                                                       )
         rails_config = RailsConfig.from_path(rail_config_dir)
-
-        llm = Ollama(
-                base_url=config.GUARDIAN_MODEL_HOST,
-                model=config.GUARDIAN_MODEL_NAME
-            )
+        # use same model as generative model.
+        llm: BaseChatModel = LLMFactory(config=config)
+        llm = LLMFactory._llm
         instance = (RunnableRails(rails_config, llm))
         return instance
 

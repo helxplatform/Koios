@@ -8,6 +8,7 @@ import os
 
 class LLMFactory:
     _instance = None
+    _llm = None
 
     def __init__(self, config):
         if LLMFactory._instance is None:
@@ -37,6 +38,7 @@ class LLMFactory:
             )
         else:
             raise ValueError(f"Invalid LLM Server type {config.LLM_SERVER_TYPE}")
+        LLMFactory._llm = llm
         return llm | LLMFactory.strip_thought
 
     @staticmethod
