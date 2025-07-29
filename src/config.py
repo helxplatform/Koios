@@ -6,6 +6,8 @@ LLM_URL = os.getenv('LLM_URL', 'https://vllm.apps.renci.org/v1').rstrip('/')
 EMBEDDING_URL = os.getenv('EMBEDDING_URL', 'http://localhost:11434')
 QDRANT_URL = os.getenv('QDRANT_URL', 'http://localhost:6333').rstrip('/')
 GEN_MODEL_NAME = os.getenv("GEN_MODEL_NAME", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+GEN_TEMPERATURE = float(os.getenv("GEN_TEMPERATURE", "0"))
+GEN_API_KEY = os.getenv("GEN_API_KEY", "EMPTY")
 GUARDIAN_MODEL_NAME = os.getenv("GUARDIAN_MODEL_NAME", "llama3.1:latest")
 GUARDIAN_MODEL_HOST = os.getenv("GUARDIAN_MODEL_URL", "http://localhost:11434")
 EMB_MODEL_NAME = os.getenv("EMB_MODEL_NAME", "Losspost/stella_en_1.5b_v5")
@@ -25,8 +27,7 @@ REDIS_GRAPH_NAME = os.getenv("REDIS_GRAPH_NAME", "")
 TMP_DIR = os.getenv("TMP_DIR", os.path.join(os.path.dirname(os.path.realpath(__file__)),'..', 'tmp'))
 ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
 APP_ID = os.getenv("APP_ID", "QV_KG_NO_ROUTE")
-GEN_API_KEY = os.getenv("GEN_API_KEY", "EMPTY")
-SERVER_ROOT_URL=os.getenv("ROOT_URL", "/agent")
+SERVER_ROOT_URL = os.getenv("ROOT_URL", "/agent")
 
 
 if LANGFUSE_ENABLED:

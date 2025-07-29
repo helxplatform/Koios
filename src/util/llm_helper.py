@@ -20,17 +20,20 @@ class LLMFactory:
             llm = ChatOpenAI(
                 api_key=os.environ.get("GEN_API_KEY", "EMPTY"),
                 base_url=config.LLM_URL,
-                model=config.GEN_MODEL_NAME
+                model=config.GEN_MODEL_NAME,
+                temperature=config.GEN_TEMPERATURE
             )
         elif server_type == "ollama":
             llm = Ollama(
                 base_url=config.LLM_URL,
-                model=config.GEN_MODEL_NAME
+                model=config.GEN_MODEL_NAME,
+                temperature=config.GEN_TEMPERATURE
             )
         elif server_type == "gemini":
             llm = ChatGoogleGenerativeAI(
                 api_key=os.environ.get("GEN_API_KEY"),
-                model=config.GEN_MODEL_NAME
+                model=config.GEN_MODEL_NAME,
+                temperature=config.GEN_TEMPERATURE
             )
         else:
             raise ValueError(f"Invalid LLM Server type {config.LLM_SERVER_TYPE}")
