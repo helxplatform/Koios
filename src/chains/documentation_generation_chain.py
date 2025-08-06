@@ -2,7 +2,9 @@ import os.path
 
 from langchain_core.runnables import (
     RunnableLambda,
-    RunnableConfig
+    RunnableConfig,
+    RunnableParallel,
+    RunnableBranch
 )
 from langchain_core.prompts import (
     ChatPromptTemplate,
@@ -37,9 +39,12 @@ class DocumentationGenerationChain:
             run_name="documentation_generation",
         )
 
-        return (self.PROMPT |
-                self.llm.with_config(run_config) |
-                StrOutputParser())
+        return RunnableParallel({
+            "prompt": self.PROMPT,
+            "output": self.PROMPT |
+                      self.llm.with_config(run_config) |
+                      StrOutputParser()
+        })
 
     @staticmethod
     def _get_about_readme_contents():
@@ -48,12 +53,13 @@ class DocumentationGenerationChain:
 
     def as_generative_chain(self):
         extraction_chain = self._as_doc_gen()
-        generative_chain = RunnableLambda(lambda x: {
-            'input': x['input'],
+        generative_chain = RunnableLambda(lambda agent_state:{
+            'input': agent_state['input'],
             'documentation': self._get_about_readme_contents()
         }) | extraction_chain | RunnableLambda(
             lambda x: {
-                "output": x
+                "output": x["output"],
+                "prompt": x["prompt"]
             }
         )
         return app_config.configure_langfuse(generative_chain.with_config(run_name="documentation_generation"))

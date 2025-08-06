@@ -10,6 +10,7 @@ from guardrails.input_guard import InputGuard
 import config as app_config
 
 import logging_util
+from models.agent_state import AgentState
 
 logger = logging_util.logger
 
@@ -43,40 +44,46 @@ def agent_node(state, agent, name):
 
 
 @observe()
-def agent_node_dict(state, agent, name):
+def agent_node_dict(state: AgentState, agent, name):
     trace_id = langfuse_context.get_current_trace_id()
 
-    chat_history = state.get("chat_history", [])
+    chat_history = state.chat_history
     # this is the input for the next agent
     input_data = {
-        "input": state["input"],
+        "input": state.input,
         "chat_history": chat_history,
-        "extra": state.get("extra", {}),
-        "user_intent": state.get("user_intent", {})
+        "extra": state.extra,
+        "user_intent": state.user_intent,
+        "return_prompt": state.return_prompt
     }
     result = agent.invoke(input_data)
     extra = result.get('extra', {})
     extra.update({"trace_id": trace_id})
     # this output is what the next agent will see.
+    if state.return_prompt:
+        extra.update({"context": result.get("prompt", "")})
     output = {
         "output": AIMessage(content=result.get('output', ''), name=name),
         "next": result.get('next', ""),
-        "input": state["input"],
+        "input": state.input,
         "extra": extra,
         "user_intent": result.get("user_intent", {})
     }
     return output
 
 
-def guardrails_node(state):
+def guardrails_node(state: AgentState):
     # Process through guardrails
     guardrails_instance = InputGuard(app_config)
-    result = guardrails_instance.invoke({"input": state["input"]}) #[-1].content})
+    result = guardrails_instance.invoke({"input": state.input}) #[-1].content})
     if "I'm sorry, I can't respond to that." in result.get("output", ""):
-        state["next"] = "FINISH"
-        state["output"] = AIMessage(content="I'm sorry, but I can't answer that question. I’m a assistant designed exclusively to support inquiries related to  NHLBI - BioData Catalyst research studies. Please redirect your question to focus on topics related to NHLBI-supported medical research studies.")
+        state.next = "FINISH"
+        state.output = AIMessage(content="I'm sorry, but I can't answer that question. I’m a assistant "
+                                            "designed exclusively to support inquiries related to  NHLBI - "
+                                            "BioData Catalyst research studies. Please redirect your question "
+                                            "to focus on topics related to NHLBI-supported medical research studies.")
         return state
 
-    state["next"] = "continue"
+    state.next = "continue"
 
     return state

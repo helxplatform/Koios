@@ -113,13 +113,24 @@ class QVKGChain:
                         "chat_history": x["chat_history"],
                         "user_persona": x["user_persona"]
                     }) | self.COMBINED_ANSWER_PROMPT | self.llm.with_config(name="answer_generation") | StrOutputParser(),
-                    "extra": RunnableLambda(lambda x: {"knowledge_graph": x["kg_extra"].get("knowledge_graph", {})})
-
+                    "extra": RunnableLambda(lambda x: {"knowledge_graph": x["kg_extra"].get("knowledge_graph", {})}),
+                    "prompt": RunnableLambda(lambda x: {
+                        "input": x["input"],
+                        "context": x["context"],
+                        "chat_history": x["chat_history"],
+                        "user_persona": x["user_persona"]
+                    }) | self.COMBINED_ANSWER_PROMPT
                 })
             ),
             RunnableLambda(lambda x: {
                 "output": "No studies or relevant information were found to answer the query.",
-                "extra": {}
+                "extra": {},
+                "prompt": RunnableLambda(lambda x: {
+                    "input": x["input"],
+                    "context": x["context"],
+                    "chat_history": x["chat_history"],
+                    "user_persona": x["user_persona"]
+                }) | self.COMBINED_ANSWER_PROMPT
             })
         ).with_config(run_name="response_branch")
         qvkg_chain = retrieval_chain | combined_chain_data | response_branch
