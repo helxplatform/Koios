@@ -9,7 +9,7 @@ class AgentState(BaseModel):
     # be added to the current states
     input: str
     # The 'next' field indicates where to route to next
-    next: str
+    next: str = Field(default="start")
     output: Optional[AIMessage] = Field(default=None)
     chat_history: List = Field(default_factory=list)
     extra: Dict[str, Any] = Field(default_factory=dict)
