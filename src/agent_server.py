@@ -5,9 +5,12 @@ import langfuse
 import config
 from agents.combined_context_graph import graph
 import logging
+from models.user_question import SimpleQuery
+from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 
 # Create FastAPI app
@@ -32,6 +35,26 @@ add_routes(
     path=config.SERVER_ROOT_URL.rstrip("/")
 )
 
+@app.post(f"{config.SERVER_ROOT_URL.rstrip('/')}/invoke_test")
+async def invoke_full(query: SimpleQuery):
+    thread_config = {"configurable": {"thread_id": "1"},}
+
+    response = await graph.ainvoke(
+            {
+                # Mimicking previous interactions.
+                "chat_history": [],
+                # Current question.
+                "input": query.query,
+                "return_prompt": True
+
+            }, config=thread_config)
+    formatted_response = {
+        "user_input": query.query,
+        "response": response["output"].content,
+        "retrieved_contexts": [x.content for x in response["extra"]["context"].messages]
+    }
+    return formatted_response
+
 
 @app.get(f"{config.SERVER_ROOT_URL.rstrip('/')}/score/{{trace_id}}/{{score}}")
 async def trace(trace_id: str, score: str):
@@ -54,7 +77,6 @@ async def trace(trace_id: str, score: str):
         trace_id=trace_id,
         value=score,
         data_type="CATEGORICAL",
-
     )
 
 

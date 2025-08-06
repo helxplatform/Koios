@@ -67,9 +67,9 @@ workflow.add_node("doc_node", doc_node)
 
 workflow.add_edge(START, "guardrails")
 # workflow.add_edge("guardrails", "query_relevance_classifier")
-workflow.add_conditional_edges("guardrails", lambda x: x["next"],
+workflow.add_conditional_edges("guardrails", lambda x: x.next,
                                {"continue": "query_relevance_classifier", "FINISH": END})
-workflow.add_conditional_edges("query_relevance_classifier", lambda x: x["next"],
+workflow.add_conditional_edges("query_relevance_classifier", lambda x: x.next,
                                {"lookup": "intent_agent", "documentation": "doc_node"})
 workflow.add_edge("intent_agent", "lookup_agent")
 workflow.add_edge("lookup_agent", END)
