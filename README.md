@@ -13,7 +13,9 @@ DugBot employs Retrieval Augmented Generation (RAG) to provide accurate, grounde
 - **Intent Agent**: Analyzes user queries and extracts intent/preferences
 - **Supervisor Agent**: Routes queries to appropriate lookup mechanisms
 - **KG Lookup Agent**: Retrieves information through knowledge graph traversal
+- The KG Lookup agent uses biomedical knowledge graphs to provide concept-driven query understanding. It identifies biomedical terms from a user’s query, maps them to UMLS IDs, and searches for study variables associated with those concepts. Studies connected to those variables are retrieved, and their abstracts are used to generate additional context. Finally, the system combines the context from both QV Lookup and KG Lookup, feeding it into an LLM to generate a richer, more precise response that blends semantic similarity with concept-driven retrieval.
 - **QV Lookup Agent**: Performs vector-based similarity search
+- The QV Lookup agent processes BDC study descriptions from dbGaP to enable semantic question answering. Each study description was analyzed with an LLM to extract research questions that could be answered from the study. These questions were then converted into vector embeddings and stored in a vector database. When a user submits a query, the system generates an embedding for that query and retrieves the closest matches from the database. This provides context that links user queries to studies with related research questions.
 
 ### Dual Retrieval Mechanisms
 1. **Vector-Based Retrieval**: Semantic similarity search over pre-generated questions
