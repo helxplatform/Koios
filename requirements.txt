@@ -12,10 +12,10 @@ langfuse==2.60.3
 openai
 tiktoken
 beautifulsoup4
-langchain-openai
-langchain-ollama
+langchain-openai==0.3.7
+langchain-ollama==0.3.3
 langchain-google-vertexai
-langchain-google-genai
+langchain-google-genai==2.1.4
 langgraph-checkpoint==2.0.25
 langgraph==0.4.3
 falkordb
