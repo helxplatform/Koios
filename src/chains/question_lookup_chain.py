@@ -39,7 +39,7 @@ class QuestionLookupChain:
             client=q_client_sync
         )
         # initialize llm
-        self.llm = LLMFactory(config=config)
+        self.llm = LLMFactory.get_llm(config=config)
         self.langfuse_client = Langfuse(secret_key=config.LANGFUSE_SECRET_KEY,
                                         public_key=config.LANGFUSE_PUBLIC_KEY,
                                         host=config.LANGFUSE_HOST)
