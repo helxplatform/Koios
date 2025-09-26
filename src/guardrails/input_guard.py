@@ -3,7 +3,7 @@ from nemoguardrails import RailsConfig
 import os
 import tempfile
 from langfuse import Langfuse
-from util.llm_helper import LLMFactory
+from util.llm_helper import LLMFactory, DeferredLLM
 from langchain_core.language_models.chat_models import BaseChatModel
 
 
@@ -25,7 +25,10 @@ class InputGuard:
                                                       )
         rails_config = RailsConfig.from_path(rail_config_dir)
         # use same model as generative model.
-        llm: BaseChatModel = LLMFactory.get_raw_llm(config)
+        def llm_factory():
+            return LLMFactory.get_raw_llm(config)
+
+        llm: BaseChatModel = DeferredLLM(llm_factory)
         self.instance = (RunnableRails(rails_config, llm))
         return self.instance
 

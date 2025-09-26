@@ -4,6 +4,7 @@ from langchain_core.messages import AIMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 import os
+from typing import Callable
 
 
 class LLMFactory:
@@ -36,14 +37,11 @@ class LLMFactory:
             raise ValueError(f"Invalid LLM Server type {config.LLM_SERVER_TYPE}")
         return llm_raw
 
-
-
     @classmethod
     def get_llm(cls, config):
         llm_raw = LLMFactory.get_raw_llm(config)
         _llm = llm_raw | LLMFactory.strip_thought
         return _llm
-
 
     @staticmethod
     def strip_thought(message: AIMessage):
@@ -52,3 +50,23 @@ class LLMFactory:
         message.content = messages[-1].strip("\n\n")
         message.response_metadata['thought'] = thought
         return message
+
+
+class DeferredLLM:
+    """
+    Lazily creates a concrete LLM instance when any attribute/method is first accessed.
+    The creation happens in the thread (and event loop) that triggers the first access.
+    `factory` should be a callable that takes no args and returns a concrete LLM instance.
+    """
+    def __init__(self, factory: Callable[[], object]):
+        self._factory = factory
+        self._llm = None
+
+    def _ensure(self):
+        if self._llm is None:
+            self._llm = self._factory()
+
+    def __getattr__(self, item):
+        # called from the thread/method that uses the llm
+        self._ensure()
+        return getattr(self._llm, item)
