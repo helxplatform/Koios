@@ -3,20 +3,16 @@ from nemoguardrails import RailsConfig
 import os
 import tempfile
 from langfuse import Langfuse
-# from langchain_community.llms import Ollama
 from util.llm_helper import LLMFactory
 from langchain_core.language_models.chat_models import BaseChatModel
 
 
 class InputGuard:
-    _instance = None
 
     def __init__(self, config):
-        if InputGuard._instance is None:
-            InputGuard._instance = InputGuard._initialize(config)
+        self._instance = self._initialize(config)
 
-    @staticmethod
-    def _initialize(config):
+    def _initialize(self, config):
         temp_dir_root = config.TMP_DIR
         langfuse_client = Langfuse(secret_key=config.LANGFUSE_SECRET_KEY,
                                    public_key=config.LANGFUSE_PUBLIC_KEY,
@@ -30,8 +26,8 @@ class InputGuard:
         rails_config = RailsConfig.from_path(rail_config_dir)
         # use same model as generative model.
         llm: BaseChatModel = LLMFactory.get_raw_llm(config)
-        instance = (RunnableRails(rails_config, llm))
-        return instance
+        self.instance = (RunnableRails(rails_config, llm))
+        return self.instance
 
     @staticmethod
     def setup_config_dir(dir_root, rails_config, rails_prompt):
@@ -45,10 +41,4 @@ class InputGuard:
         with open(prompt_file_path, 'w') as prompt_file:
             prompt_file.write(rails_prompt)
         return guard_config_path
-
-    def __new__(cls, config):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance = cls._initialize(config)
-        return cls._instance
 
