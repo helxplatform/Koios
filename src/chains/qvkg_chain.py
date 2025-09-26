@@ -25,7 +25,7 @@ class QVKGChain:
         self.config = config
         self.kg_chain = KGChain(config=config)
         self.qv_chain = QuestionLookupChain(config=config)
-        self.llm = LLMFactory(config=config)
+        self.llm = LLMFactory.get_llm(config=config)
         self.default_lookup_k = default_k
         self.langfuse_client = Langfuse(secret_key=config.LANGFUSE_SECRET_KEY,
                                         public_key=config.LANGFUSE_PUBLIC_KEY,

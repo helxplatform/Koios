@@ -44,7 +44,7 @@ def agent_node(state, agent, name):
 
 
 @observe()
-def agent_node_dict(state: AgentState, agent, name):
+async def agent_node_dict(state: AgentState, agent, name):
     trace_id = langfuse_context.get_current_trace_id()
 
     chat_history = state.chat_history
@@ -56,7 +56,7 @@ def agent_node_dict(state: AgentState, agent, name):
         "user_intent": state.user_intent,
         "return_prompt": state.return_prompt
     }
-    result = agent.invoke(input_data)
+    result = await agent.ainvoke(input_data)
     extra = result.get('extra', {})
     extra.update({"trace_id": trace_id})
     # this output is what the next agent will see.
@@ -72,10 +72,10 @@ def agent_node_dict(state: AgentState, agent, name):
     return output
 
 
-def guardrails_node(state: AgentState):
+async def guardrails_node(state: AgentState):
     # Process through guardrails
     guardrails_instance = InputGuard(app_config)
-    result = guardrails_instance.invoke({"input": state.input}) #[-1].content})
+    result = await guardrails_instance.ainvoke({"input": state.input}) #[-1].content})
     if "I'm sorry, I can't respond to that." in result.get("output", ""):
         state.next = "FINISH"
         state.output = AIMessage(content="I'm sorry, but I can't answer that question. I’m a assistant "

@@ -84,19 +84,18 @@ callback_manager = CallbackManager([langfuse_callback])
 # Compile the graph with memory
 graph = workflow.compile(checkpointer=MemorySaver()) #.with_config(callbacks=callback_manager)
 
-if __name__ == "__main__":
-    # Test code to run
+
+# ---- test code ----
+async def main():
     graph.get_graph().print_ascii()
     from langfuse.callback import CallbackHandler
-
     langfuse_callback = CallbackHandler(
         host=config.LANGFUSE_HOST,
         secret_key=config.LANGFUSE_SECRET_KEY,
         public_key=config.LANGFUSE_PUBLIC_KEY
     )
     thread_config = {"configurable": {"thread_id": "1"}, "callbacks": [langfuse_callback]}
-
-    for s in graph.stream(
+    result = await graph.ainvoke(
             {
                 # Mimicking previous interactions.
                 "chat_history": [
@@ -106,10 +105,11 @@ if __name__ == "__main__":
                 "input": "What kind of question should i ask?",
 
             }, config=thread_config
-    ):
-        if "__end__" not in s:
-            print(s)
-            state = graph.get_state(thread_config)
-            print(state)
-            # print(state['intents'])  # Prints the detected intents
+    )
 
+
+if __name__ == "__main__":
+    # Test code to run
+    import asyncio
+    asyncio.run(main())
+# --- end test ---

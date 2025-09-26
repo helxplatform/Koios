@@ -29,8 +29,7 @@ class InputGuard:
                                                       )
         rails_config = RailsConfig.from_path(rail_config_dir)
         # use same model as generative model.
-        llm: BaseChatModel = LLMFactory(config=config)
-        llm = LLMFactory._llm
+        llm: BaseChatModel = LLMFactory.get_raw_llm(config)
         instance = (RunnableRails(rails_config, llm))
         return instance
 

@@ -23,7 +23,7 @@ from langfuse import Langfuse
 class DocumentationGenerationChain:
     def __init__(self, config):
         self.config = config
-        self.llm: BaseChatModel = LLMFactory(config=config)
+        self.llm: BaseChatModel = LLMFactory.get_llm(config=config)
         self.langfuse_client = Langfuse(secret_key=config.LANGFUSE_SECRET_KEY,
                                         public_key=config.LANGFUSE_PUBLIC_KEY,
                                         host=config.LANGFUSE_HOST)
