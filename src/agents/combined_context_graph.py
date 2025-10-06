@@ -59,16 +59,16 @@ doc_node = functools.partial(agent_node_dict, agent=DocumentationGenerationChain
 workflow = StateGraph(AgentState)
 
 
-workflow.add_node("guardrails", guardrails_node)
+# workflow.add_node("guardrails", guardrails_node)
 workflow.add_node("lookup_agent", qv_kg_lookup_agent_node)
 workflow.add_node("intent_agent", intent_agent_node)
 workflow.add_node("query_relevance_classifier", query_routing_node)
 workflow.add_node("doc_node", doc_node)
 
-workflow.add_edge(START, "guardrails")
+workflow.add_edge(START, "query_relevance_classifier")
 # workflow.add_edge("guardrails", "query_relevance_classifier")
-workflow.add_conditional_edges("guardrails", lambda x: x.next,
-                               {"continue": "query_relevance_classifier", "FINISH": END})
+# workflow.add_conditional_edges("guardrails", lambda x: x.next,
+                            #    {"continue": "query_relevance_classifier", "FINISH": END})
 workflow.add_conditional_edges("query_relevance_classifier", lambda x: x.next,
                                {"lookup": "intent_agent", "documentation": "doc_node"})
 workflow.add_edge("intent_agent", "lookup_agent")
