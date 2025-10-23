@@ -215,9 +215,7 @@ async def enrich_graph_with_transforms(nodes: List[Node]) -> Tuple[KnowledgeGrap
         cleaned = [clean_entity(e) for e in ents if clean_entity(e)]
         node.properties["entities"] = cleaned
         node.type = NodeType.CHUNK if cleaned else NodeType.DOCUMENT
-    # leave out where the similarity is 1 
-    # 0.5 > 1
-    # take 10 abstracts 
+   
     # --- Jaccard relationships ---
     jaccard_transforms = [
         JaccardSimilarityBuilder(property_name="entities", new_property_name="entity_jaccard_similarity"),
