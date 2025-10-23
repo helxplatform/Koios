@@ -190,6 +190,9 @@ async def enrich_graph_with_transforms(nodes: List[Node]) -> Tuple[KnowledgeGrap
         for k in ("entities", "keyphrases"):
             n.properties.pop(k, None)
 
+    with open(outdir / "knowledge_graph.json", "w") as f:
+        json.dump(kg.to_dict(), f, indent=2)
+
     # --- Run NER + keyphrase extraction ---
     from ragas.testset.transforms.extractors import KeyphrasesExtractor
     ner = NERExtractor()
