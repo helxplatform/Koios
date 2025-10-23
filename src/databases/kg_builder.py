@@ -18,8 +18,8 @@ import networkx as nx
 # 4) Builds a NetworkX MultiDiGraph: nodes have {name, type}, edges have {relation, evidence, confidence}.
 # 5) Verbalizes local subgraphs around center nodes into readable sentences.
 # 6) Emits:
-#    - kg_edges.jsonl    (edge list with evidence; useful for audits/debug)
-#    - kg_contexts.jsonl (verbalized contexts you’ll feed into RAGAS testset generation)
+#    - kg_edges.jsonl    
+#    - kg_contexts.jsonl (
 #
 # Notes:
 # - RAGAS consumes TEXT, not graphs. These “contexts” are the textual bridge.
@@ -28,16 +28,10 @@ import networkx as nx
 
 # Label sets for scispaCy models
 
-# dont restrict, entity its self that the study is done 
-# larger than robokop, expand 
 CHEM_LABELS = {"CHEMICAL", "CHEMICAL_ENTITY", "CHEMICALSUBSTANCE"}
 DISEASE_LABELS = {"DISEASE", "DISEASE_OR_SYNDROME"}
 GENE_LABELS = {"GENE_OR_GENE_PRODUCT", "GENE", "PROTEIN"}
 
-# Surface-level relation cue patterns (regex)
-# be very open with the relationships 
-# lets use an LLM to grab the nodes + edges 
-# look into RAGAS example w/jaccard similarity (be specific about relationship)
 REL_PATTERNS: List[Tuple[str, str]] = [
     (r"\b(treats?|therapy for|effective against|ameliorates)\b", "treats"),
     (r"\b(causes?|leads to|induces?|triggers?)\b", "causes"),
