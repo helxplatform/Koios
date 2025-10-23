@@ -15,6 +15,14 @@ from ragas.testset.transforms.extractors import NERExtractor
 from ragas.testset.synthesizers.multi_hop.base import MultiHopQuerySynthesizer, MultiHopScenario
 from ragas.testset.synthesizers.prompts import ThemesPersonasInput, ThemesPersonasMatchingPrompt
 
+import uuid
+
+def safe_json(obj):
+    """Safely convert non-serializable types like UUIDs."""
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    raise TypeError(f"Type {type(obj)} not serializable")
+
 
 # Custom Multi-Hop Synthesizer (https://docs.ragas.io/en/latest/howtos/customizations/testgenerator/_testgen-customisation/#set-up-the-llm-and-embedding-model)
 @dataclass
@@ -88,11 +96,20 @@ class MyMultiHopQuery(MultiHopQuerySynthesizer):
             if not base_scenarios:
                 print(f"[WARN] No combinations for {node_a.properties.get('title', '')[:50]} "
                       f"↔ {node_b.properties.get('title', '')[:50]}")
-                # --- Fallback: force one simple scenario ---
                 s = MultiHopScenario(
                     nodes=[node_a, node_b],
-                    reasoning="Explores a relationship between two related abstracts.",
+                    reasoning="Explores a relationship between two related biomedical abstracts.",
                     synthesizer_name="multi_hop_query",
+                    style="analytical",
+                    length="medium",
+                    persona=random.choice(persona_list),     
+                    combinations=[
+                        {
+                            "property_name": "entities",
+                            "overlap_type": "jaccard_similarity",
+                            "value": rel.properties.get("entity_jaccard_similarity", 0.0)
+                        }
+                    ],
                 )
                 base_scenarios = [s]
 
@@ -179,19 +196,41 @@ def build_nodes(rows: List[Dict[str, Any]]) -> List[Node]:
 
 
 #  Graph Enrichment (NER, Keyphrases, and Jaccard)
-async def enrich_graph_with_transforms(nodes: List[Node]) -> Tuple[KnowledgeGraph, List]:
+async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path) -> Tuple[KnowledgeGraph, List]:
     """Apply entity/keyphrase extraction, clean entities, and compute Jaccard similarities."""
+    outdir.mkdir(parents=True, exist_ok=True)
     kg = KnowledgeGraph(nodes=nodes)
 
+    # Add metadata
     for node in kg.nodes:
         node.properties["doc_source"] = node.properties.get("doc_id", "unknown")
 
+    # Remove old entity/keyphrase fields if any
     for n in kg.nodes:
         for k in ("entities", "keyphrases"):
             n.properties.pop(k, None)
 
-    with open(outdir / "knowledge_graph.json", "w") as f:
-        json.dump(kg.to_dict(), f, indent=2)
+    # --- Safe JSON encoder for UUIDs ---
+    def safe_json(obj):
+        if isinstance(obj, uuid.UUID):
+            return str(obj)
+        raise TypeError(f"Type {type(obj)} not serializable")
+
+    # --- Save initial graph snapshot (before transforms) ---
+    graph_data = {
+        "nodes": [
+            {
+                "id": str(getattr(node, "id", None)),
+                "type": str(getattr(node, "type", None)),
+                "properties": node.properties,
+            }
+            for node in kg.nodes
+        ],
+        "relationships": []
+    }
+    (outdir / "knowledge_graph_initial.json").write_text(
+        json.dumps(graph_data, indent=2, default=safe_json)
+    )
 
     # --- Run NER + keyphrase extraction ---
     from ragas.testset.transforms.extractors import KeyphrasesExtractor
@@ -202,8 +241,8 @@ async def enrich_graph_with_transforms(nodes: List[Node]) -> Tuple[KnowledgeGrap
     if inspect.isawaitable(maybe_coro):
         await maybe_coro
 
-    # --- Clean and reclassify entities ---
-    STOP_ENTS = {"the","this","that","for","of","in","to","and","on","by","from","with"}
+    # --- Clean entities ---
+    STOP_ENTS = {"the", "this", "that", "for", "of", "in", "to", "and", "on", "by", "from", "with"}
     def clean_entity(e: str) -> str:
         e = e.strip().strip(".").strip(":")
         if not e or e.lower() in STOP_ENTS:
@@ -215,8 +254,8 @@ async def enrich_graph_with_transforms(nodes: List[Node]) -> Tuple[KnowledgeGrap
         cleaned = [clean_entity(e) for e in ents if clean_entity(e)]
         node.properties["entities"] = cleaned
         node.type = NodeType.CHUNK if cleaned else NodeType.DOCUMENT
-   
-    # --- Jaccard relationships ---
+
+    # --- Compute Jaccard relationships ---
     jaccard_transforms = [
         JaccardSimilarityBuilder(property_name="entities", new_property_name="entity_jaccard_similarity"),
         JaccardSimilarityBuilder(property_name="keyphrases", new_property_name="keyphrase_jaccard_similarity"),
@@ -233,16 +272,38 @@ async def enrich_graph_with_transforms(nodes: List[Node]) -> Tuple[KnowledgeGrap
         if src_doc != tgt_doc:
             cross_edges.append(r)
 
+    #  Save final enriched knowledge graph 
+    graph_data_final = {
+        "nodes": [
+            {
+                "id": str(getattr(node, "id", None)),
+                "type": str(getattr(node, "type", None)),
+                "properties": node.properties,
+            }
+            for node in kg.nodes
+        ],
+        "relationships": [
+            {
+                "source": str(getattr(rel.source, "id", None)),
+                "target": str(getattr(rel.target, "id", None)),
+                "properties": rel.properties,
+            }
+            for rel in kg.relationships
+        ],
+    }
+    (outdir / "knowledge_graph.json").write_text(
+        json.dumps(graph_data_final, indent=2, default=safe_json)
+    )
+
     print(f"[INFO] Cross-abstract edges: {len(cross_edges)} / {len(kg.relationships)} total")
     print(f"[DEBUG] Sample relationship keys: {[list(r.properties.keys()) for r in kg.relationships[:3]]}")
     return kg, rels or kg.relationships
-
 
 #  Main: Testset Generation
 async def _amain(args):
     rows = load_abstracts(args.input)
     nodes = build_nodes(rows)
-    kg, _ = await enrich_graph_with_transforms(nodes)
+    kg, _ = await enrich_graph_with_transforms(nodes, Path(args.outdir))
 
     from ragas.testset import TestsetGenerator
     from ragas.testset.synthesizers.single_hop.specific import SingleHopSpecificQuerySynthesizer
