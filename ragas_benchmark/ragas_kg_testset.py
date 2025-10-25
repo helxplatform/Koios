@@ -158,13 +158,22 @@ def load_abstracts(path: str | Path) -> List[Dict[str, Any]]:
 # =========================================================
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
-def chunk_document_to_nodes(doc: Dict[str, Any]) -> List[Node]:
+def chunk_document_to_nodes(doc: Dict[str, Any], split_sent=False) -> List[Node]:
     """Split a document into sentence-level nodes and merge short fragments."""
     title = (doc.get("title") or "").strip()
     abstract = (doc.get("abstract") or "").strip()
     text = (title + ". " + abstract).strip().strip(". ")
     if not text:
         return []
+    if not split_sent:
+        return [
+            Node(properties={
+                "page_content": text,
+                "doc_id": doc.get("doc_id"),
+                "title": title,
+                "permalink": doc.get("permalink", ""),
+            })
+        ]
 
     sents = [s.strip() for s in _SENT_SPLIT.split(text) if s.strip()]
     merged, buffer = [], ""
@@ -178,7 +187,6 @@ def chunk_document_to_nodes(doc: Dict[str, Any]) -> List[Node]:
         merged.append(s)
     if buffer:
         merged.append(buffer.strip())
-
     return [
         Node(properties={
             "page_content": sent,
@@ -189,6 +197,7 @@ def chunk_document_to_nodes(doc: Dict[str, Any]) -> List[Node]:
         })
         for i, sent in enumerate(merged)
     ]
+
 
 def build_nodes(rows: List[Dict[str, Any]]) -> List[Node]:
     """Flatten all document nodes into a single list."""
@@ -233,10 +242,11 @@ async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path) -> Tuple
     )
 
     # --- Run NER + keyphrase extraction ---
-    from ragas.testset.transforms.extractors import KeyphrasesExtractor
-    ner = NERExtractor()
-    kx = KeyphrasesExtractor()
-    extractor_block = Parallel(ner, kx)
+    # from ragas.testset.transforms.extractors import KeyphrasesExtractor
+    from utils.scispacyNER import SciSpacyNERExtractor
+    ner = SciSpacyNERExtractor()
+    # kx = KeyphrasesExtractor()
+    extractor_block = Parallel(ner) #kx)
     maybe_coro = apply_transforms(kg, [extractor_block])
     if inspect.isawaitable(maybe_coro):
         await maybe_coro
@@ -302,9 +312,9 @@ async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path) -> Tuple
 #  Main: Testset Generation
 async def _amain(args):
     rows = load_abstracts(args.input)
-    nodes = build_nodes(rows)
+    nodes = build_nodes(rows[10:])
     kg, _ = await enrich_graph_with_transforms(nodes, Path(args.outdir))
-
+    exit()
     from ragas.testset import TestsetGenerator
     from ragas.testset.synthesizers.single_hop.specific import SingleHopSpecificQuerySynthesizer
     from ragas.llms import LangchainLLMWrapper
