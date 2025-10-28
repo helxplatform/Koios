@@ -244,6 +244,10 @@ async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path) -> Tuple
     # --- Run NER + keyphrase extraction ---
     # from ragas.testset.transforms.extractors import KeyphrasesExtractor
     from utils.scispacyNER import SciSpacyNERExtractor
+    from utils.jaccardTFIDF import WeightedJaccardBuilder
+    from utils.centroid_cluster_builder import ClusterCentroidBuilder
+    from utils.pmi_builder import PMIRelationshipBuilder
+    from utils.hybrid_relation_builder import HybridRelationshipBuilder
     ner = SciSpacyNERExtractor()
     # kx = KeyphrasesExtractor()
     extractor_block = Parallel(ner) #kx)
@@ -267,8 +271,13 @@ async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path) -> Tuple
 
     # --- Compute Jaccard relationships ---
     jaccard_transforms = [
-        JaccardSimilarityBuilder(property_name="entities", new_property_name="entity_jaccard_similarity"),
-        JaccardSimilarityBuilder(property_name="keyphrases", new_property_name="keyphrase_jaccard_similarity"),
+        WeightedJaccardBuilder(property_name="entities", new_property_name="weighted_jaccard_similarity",  threshold=0.5),
+        JaccardSimilarityBuilder(property_name="entities", new_property_name="entity_jaccard_similarity", threshold=0.5),
+        ClusterCentroidBuilder(property_name="entities", new_property_name="centroid_similarity"),
+        # PMIRelationshipBuilder(property_name="entities"),
+        # HybridRelationshipBuilder(property_name="entities")
+
+        # JaccardSimilarityBuilder(property_name="keyphrases", new_property_name="keyphrase_jaccard_similarity"),
     ]
     maybe_coro = apply_transforms(kg, jaccard_transforms)
     rels = await maybe_coro if inspect.isawaitable(maybe_coro) else maybe_coro
@@ -297,6 +306,7 @@ async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path) -> Tuple
                 "source": str(getattr(rel.source, "id", None)),
                 "target": str(getattr(rel.target, "id", None)),
                 "properties": rel.properties,
+                "type": rel.type
             }
             for rel in kg.relationships
         ],
@@ -312,7 +322,7 @@ async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path) -> Tuple
 #  Main: Testset Generation
 async def _amain(args):
     rows = load_abstracts(args.input)
-    nodes = build_nodes(rows[10:])
+    nodes = build_nodes(rows)
     kg, _ = await enrich_graph_with_transforms(nodes, Path(args.outdir))
     exit()
     from ragas.testset import TestsetGenerator
