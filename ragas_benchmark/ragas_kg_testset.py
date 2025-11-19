@@ -203,6 +203,10 @@ async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path):
 
     # --- Named Entity Recognition ---
     from utils.scispacyNER import SciSpacyNERExtractor
+    from utils.jaccardTFIDF import WeightedJaccardBuilder
+    from utils.centroid_cluster_builder import ClusterCentroidBuilder
+    from utils.pmi_builder import PMIRelationshipBuilder
+    from utils.hybrid_relation_builder import HybridRelationshipBuilder
     ner = SciSpacyNERExtractor()
     extractor_block = Parallel(ner)
 
@@ -223,8 +227,13 @@ async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path):
 
     # --- Build similarity relationships ---
     jaccard_transforms = [
-        JaccardSimilarityBuilder(property_name="entities", new_property_name="entity_jaccard_similarity"),
-        JaccardSimilarityBuilder(property_name="keyphrases", new_property_name="keyphrase_jaccard_similarity"),
+        WeightedJaccardBuilder(property_name="entities", new_property_name="weighted_jaccard_similarity",  threshold=0.5),
+        JaccardSimilarityBuilder(property_name="entities", new_property_name="entity_jaccard_similarity", threshold=0.5),
+        ClusterCentroidBuilder(property_name="entities", new_property_name="centroid_similarity"),
+        # PMIRelationshipBuilder(property_name="entities"),
+        # HybridRelationshipBuilder(property_name="entities")
+
+        # JaccardSimilarityBuilder(property_name="keyphrases", new_property_name="keyphrase_jaccard_similarity"),
     ]
     maybe_coro = apply_transforms(kg, jaccard_transforms)
     if inspect.isawaitable(maybe_coro):
@@ -235,8 +244,10 @@ async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path):
         src_doc, tgt_doc = r.source.properties.get("doc_id"), r.target.properties.get("doc_id")
         r.properties["cross_doc"] = src_doc != tgt_doc
 
+
     print(f"[INFO] Cross-abstract edges: {sum(r.properties['cross_doc'] for r in kg.relationships)} / {len(kg.relationships)} total")
     return kg
+
 
 
 # ----------------------------------------------------------------------
@@ -249,6 +260,7 @@ async def _amain(args):
     # --- Load and preprocess data ---
     rows = load_abstracts(args.input)
     nodes = build_nodes(rows)
+
 
     # --- Enrich KG with NER + relationships ---
     kg = await enrich_graph_with_transforms(nodes, Path(args.outdir))
