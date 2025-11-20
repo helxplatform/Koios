@@ -1,0 +1,94 @@
+version: 1.3.0
+
+tool:
+  name: DugBot
+  repo_url: https://github.com/helxplatform/Koios
+  tool_homepage: https://github.com/helxplatform/Koios
+  documentation_url: https://github.com/helxplatform/Koios
+  tool_type: WebApp
+
+llm:
+  usesLlm: true
+  modelsSupported:
+    - Meta-Llama-3.1-8B-Instruct
+  modelsRequired:
+    - Meta-Llama-3.1-8B-Instruct
+  bringOwnKey: false
+
+input:
+  - name: Metadata/Data Dictionaries of datasets
+    dataCategory: Metadata/Data Dictionaries of datasets
+    dataClass: text-and-dictionaries
+    dataType: Data Dictionaries from BDC studies
+    format:
+      - csv
+    dataStandard:
+      - Metadata/Data Dictionaries
+    proprietary: false
+    source: https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=phs000571.v6.p2
+  - name: Study Description
+    dataCategory: Study Description
+    dataClass: text
+    dataType: text
+    format:
+      - txt
+    dataStandard:
+      - text
+    proprietary: false
+    source: https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=phs000571.v6.p2
+
+output:
+  - name: Text and hyperlinks 1
+    dataCategory: Text and hyperlinks
+    dataClass: text-and-hyperlinks
+    dataType: Text and a graph showing the result
+    format:
+      - txt
+    dataStandard:
+      - text
+    proprietary: false
+    source: https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=phs000571.v6.p2
+  - name: Text and hyperlinks 2
+    dataCategory: Text and hyperlinks
+    dataClass: text-and-hyperlinks
+    dataType: text
+    format:
+      - txt
+    dataStandard:
+      - text
+    proprietary: false
+    source: https://www.ncbi.nlm.nih.gov/projects/gap/cgi-bin/study.cgi?study_id=phs000571.v6.p2
+
+license:
+  license_type: Not licensed
+  link: https://github.com/helxplatform/Koios
+
+funding:
+  source: ARPA-H
+  agreement: Not specified
+  link: ""
+
+domains:
+  - NHLBI - Heart, Lung, Blood, Sleep
+
+credit:
+  - name: RENCI
+    role: Developer
+    org: Renaissance Computing Institute
+    url: https://renci.org/
+
+target_users:
+  primary_user:
+    user_type: researcher
+    technical_literacy_level:
+      - intermediate
+    biomedical_literacy_level:
+      - advanced
+
+maturity:
+  beginning_maturity: 1
+  current_maturity: 2
+
+media: []
+
+collaborations: []
