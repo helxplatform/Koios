@@ -5,6 +5,10 @@ on:
         types: [published]
 
 jobs:
+    validate-tool:
+        uses: ARPA-H-BDF/bdfkb-schema/.github/workflows/ci-validate.yaml@main
+        with:
+            python-version: '3.12' 
     push_to_registry:
         name: Push Docker image to GitHub Packages tagged with "latest" and version number.
         runs-on: ubuntu-latest
