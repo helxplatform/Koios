@@ -5,7 +5,7 @@ import config as app_config
 from chains.kg_chain import KGChain
 from chains.question_lookup_chain import QuestionLookupChain
 from models.user_question import Question
-from typing import Dict, List
+from typing import Dict, List, Optional
 from langchain_core.prompts.prompt import PromptTemplate
 import xml.etree.ElementTree as ET
 from langchain_core.runnables import (
