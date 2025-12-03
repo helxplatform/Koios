@@ -8,6 +8,7 @@ from models.user_question import Question
 from typing import Dict, List, Optional
 from langchain_core.prompts.prompt import PromptTemplate
 import xml.etree.ElementTree as ET
+import re
 from langchain_core.runnables import (
     RunnableParallel,
     RunnableLambda,
