@@ -12,8 +12,17 @@ class ClusterCentroidBuilder(RelationshipBuilder):
     n_clusters: int = 14
     intra_threshold: float = 0.8
 
+    # REQUIRED BY RAGAS
+    def filter_nodes(self, kg):
+        return kg.nodes
+
+    # REQUIRED BY RAGAS
+    def filter(self, kg):
+        return kg
+
     async def transform(self, kg: KnowledgeGraph):
         docs = [" ".join(n.get_property(self.property_name) or []) for n in kg.nodes]
+
         vec = TfidfVectorizer().fit(docs)
         X = vec.transform(docs)
         kmeans = KMeans(n_clusters=self.n_clusters, random_state=42)

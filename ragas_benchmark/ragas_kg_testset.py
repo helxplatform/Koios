@@ -1,61 +1,83 @@
 """
-Purpose:
---------
-Generate test questions (scenarios) grounded in biomedical abstracts.
-This script:
-  1. Loads a dataset of biomedical abstracts (CSV, JSON, or Excel).
-  2. Extracts entities (NER) using SciSpacy.
-  3. Builds a knowledge graph with relationships (Jaccard similarity, etc.).
-  4. Automatically detects relation types and creates multi-hop question scenarios.
-  5. Uses an LLM (GPT-4o-mini) and embeddings to generate a RAGAS-style testset.
-  6. Outputs the full testset + per-relation-type subsets as JSONL files.
+Modern RAGAS KG Testset Generator (2025 API)
+------------------------------------------------
+✓ SciSpacy NER
+✓ Weighted Jaccard
+✓ Jaccard Similarity
+✓ Centroid Similarity
+✓ Single-Hop + Multi-Hop QA
+✓ Fully compatible with RAGAS 2025 API
 """
 
 from __future__ import annotations
-import argparse, asyncio, json, inspect, random, re, uuid
+import argparse, asyncio, json, uuid, random
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-import pandas as pd
+from typing import Any, Dict, List
 from dataclasses import dataclass
-import typing as t
+import pandas as pd
 
-# --- RAGAS imports (core framework for testset generation) ---
+# --------------------------------------------------------
+# RAGAS modern imports
+# --------------------------------------------------------
 from ragas.testset.graph import Node, KnowledgeGraph, NodeType
 from ragas.testset.transforms import apply_transforms, Parallel
-from ragas.testset.transforms.relationship_builders.traditional import JaccardSimilarityBuilder
-from ragas.testset.synthesizers.multi_hop.base import MultiHopQuerySynthesizer, MultiHopScenario
-from ragas.testset.synthesizers.prompts import ThemesPersonasInput, ThemesPersonasMatchingPrompt
+from ragas.testset.synthesizers.single_hop import (
+    SingleHopQuerySynthesizer,
+    SingleHopScenario,
+)
+from ragas.testset.synthesizers.multi_hop import (
+    MultiHopQuerySynthesizer,
+    MultiHopScenario,
+)
+from ragas.testset import TestsetGenerator
+from ragas.llms.base import llm_factory
+from ragas.embeddings import OpenAIEmbeddings
+from ragas.testset.persona import Persona
 
-# ----------------------------------------------------------------------
-# Utility: JSON serialization helper for UUIDs
-# ----------------------------------------------------------------------
+# --------------------------------------------------------
+# Your custom builders
+# --------------------------------------------------------
+from ragas_benchmark.utils.scispacyNER import SciSpacyNERExtractor
+from ragas_benchmark.utils.jaccardTFIDF import WeightedJaccardBuilder
+from ragas_benchmark.utils.centroid_cluster_builder import ClusterCentroidBuilder
+from ragas.testset.transforms.relationship_builders.traditional import (
+    JaccardSimilarityBuilder,
+)
+
+# --------------------------------------------------------
+# Helpers
+# --------------------------------------------------------
 def safe_json(obj):
-    """Converts UUID objects to strings when dumping JSON, 
-    avoiding serialization errors."""
     if isinstance(obj, uuid.UUID):
         return str(obj)
-    raise TypeError(f"Type {type(obj)} not serializable")
+    raise TypeError(f"Cannot serialize {type(obj)}")
 
 
-# ----------------------------------------------------------------------
-# Custom Multi-Hop Query Synthesizer (auto-detect relation types)
-# ----------------------------------------------------------------------
+QUESTION_TEMPLATES = {
+    "entity_jaccard_similarity": (
+        "What shared biomedical entities link '{a}' and '{b}'?",
+        "These abstracts share overlapping biomedical entities.",
+    ),
+    "weighted_jaccard_similarity": (
+        "How are '{a}' and '{b}' related based on high-importance overlapping entities?",
+        "Weighted Jaccard similarity indicates strong shared semantic features.",
+    ),
+    "centroid_similarity": (
+        "How do '{a}' and '{b}' align conceptually?",
+        "Their embeddings place them in similar conceptual clusters.",
+    ),
+    "default": (
+        "What is the relationship between '{a}' and '{b}'?",
+        "They show semantic overlap.",
+    ),
+}
 
+# --------------------------------------------------------
+# SINGLE-HOP GENERATOR
+# --------------------------------------------------------
 @dataclass
-class MyMultiHopQuery(MultiHopQuerySynthesizer):
-    """
-    Extends RAGAS's MultiHopQuerySynthesizer to automatically
-    generate multi-hop scenarios from biomedical abstracts.
-
-    Attributes:
-    -----------
-    documents : list
-        List of Node objects containing biomedical abstracts.
-    """
-
-    def __init__(self, documents=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.documents = documents or []
+class MySingleHopQuery(SingleHopQuerySynthesizer):
+    kg: KnowledgeGraph = None
 
     async def _generate_scenarios(
         self,
@@ -65,107 +87,131 @@ class MyMultiHopQuery(MultiHopQuerySynthesizer):
         synthesizer_name=None,
         n_samples=None,
     ):
-        """
-        Generates multi-hop scenarios between document pairs.
 
-        Steps:
-        1. Checks and loads documents.
-        2. Randomly selects document pairs.
-        3. Builds MultiHopScenario objects (question-like examples).
-        """
+        # --- FIX persona (RAGAS sometimes passes [Persona]) ---
+        if isinstance(persona, list) and len(persona) > 0:
+            persona = persona[0]
 
-        # --- Validate docs input ---
-        if not isinstance(docs, (list, tuple)):
-            print(f"[WARN] Expected docs list, got {type(docs).__name__} = {docs}")
-            docs = getattr(self, "documents", [])
-            print(f"[INFO] Falling back to self.documents ({len(docs)} items)")
+        n_samples = n_samples or 10
+        n_samples = min(n_samples, len(self.kg.relationships))
 
-        print(f"[INFO] Generating multi-hop scenarios from {len(docs)} documents...")
+        edges = random.sample(self.kg.relationships, n_samples)
+        scenarios = []
 
-        # --- Sample document pairs ---
+        for r in edges:
+            src, tgt = r.source, r.target
+            ta = src.properties.get("title", "Document A")
+            tb = tgt.properties.get("title", "Document B")
+
+            # choose similarity metric
+            rel_key = next(
+                (k for k in r.properties if "similarity" in k), "default"
+            )
+            q_tpl, a_tpl = QUESTION_TEMPLATES.get(
+                rel_key, QUESTION_TEMPLATES["default"]
+            )
+
+            scenarios.append(
+                SingleHopScenario(
+                    term=f"{ta} ↔ {tb}",
+                    question=q_tpl.format(a=ta, b=tb),
+                    answer=a_tpl,
+                    nodes=[src, tgt],
+                    context_documents=[src, tgt],
+                    style="Perfect grammar",
+                    length="short",
+                    persona=persona,
+                )
+            )
+
+        return scenarios
+
+
+# --------------------------------------------------------
+# MULTI-HOP GENERATOR
+# --------------------------------------------------------
+@dataclass
+class MyMultiHopQuery(MultiHopQuerySynthesizer):
+    documents: List[Node] = None
+
+    async def _generate_scenarios(
+        self,
+        docs=None,
+        sample_generation_grp=None,
+        persona=None,
+        synthesizer_name=None,
+        n_samples=None,
+    ):
+
+        # fix persona = [Persona] case
+        if isinstance(persona, list) and len(persona) > 0:
+            persona = persona[0]
+
+        # fix docs=int bug
+        if not isinstance(docs, list):
+            docs = self.documents
+
         n_docs = len(docs)
-        n_pairs = min(n_samples or 10, n_docs * (n_docs - 1) // 2)
-        pairs = set()
+        n_samples = n_samples or 10
 
-        # Randomly choose unique document pairs
-        while len(pairs) < n_pairs:
+        scenarios = []
+
+        for _ in range(n_samples):
             i, j = random.sample(range(n_docs), 2)
-            if i != j:
-                pairs.add(tuple(sorted((i, j))))
-        pairs = list(pairs)
-
-        # --- Create multi-hop scenarios ---
-        all_scenarios = []
-        for (i, j) in pairs:
             d1, d2 = docs[i], docs[j]
-            sim = 0.5  # Placeholder similarity score
 
-            # Create one scenario describing the relationship between d1 and d2
+            t1 = d1.properties.get("title", "Doc A")
+            t2 = d2.properties.get("title", "Doc B")
+            id1 = str(d1.properties.get("doc_id") or d1.properties.get("title") or "A")
+            id2 = str(d2.properties.get("doc_id") or d2.properties.get("title") or "B")
+
             scenario = MultiHopScenario(
+                term=f"{t1} ↔ {t2}",
+                question=f"How do findings from '{t1}' connect to '{t2}' via multi-step biomedical reasoning?",
+                answer="The studies provide complementary insights connected through multi-step reasoning.",
                 nodes=[d1, d2],
-                source_documents=[d1, d2],
-                relation_type="entity_jaccard_similarity",
-                score=sim,
-                combinations=[f"{d1.properties.get('title', 'Doc A')} ↔ {d2.properties.get('title', 'Doc B')}"],
+                context_documents=[d1, d2],
+                path=[d1, d2],
+
+                combinations=[f"{id1} | {id2}"],
+
+
                 style="Perfect grammar",
                 length="long",
-                persona={
-                    "name": "Biomedical Researcher",
-                    "role_description": "Explores relationships between studies and genetic traits"
-                },
+                persona=persona,
             )
-            all_scenarios.append(scenario)
 
-        print(f"[INFO] Created {len(all_scenarios)} sampled MultiHopScenario objects.")
-        return all_scenarios
+            scenarios.append(scenario)
+
+        return scenarios
 
 
-# ----------------------------------------------------------------------
-# Helpers: Loading and preprocessing biomedical abstracts
-# ----------------------------------------------------------------------
-
-_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
-
+# --------------------------------------------------------
+# LOADING + NODE BUILDING
+# --------------------------------------------------------
 def load_abstracts(path: str | Path) -> List[Dict[str, Any]]:
-    """
-    Loads biomedical abstracts from a CSV, JSON, or Excel file.
-    Returns a list of dictionaries with fields:
-      - doc_id
-      - title
-      - abstract
-      - permalink
-    """
-    path = str(path).strip()
-    if path.endswith(".csv"):
-        df = pd.read_csv(path, on_bad_lines="skip", engine="python")
-    elif path.endswith(".xlsx"):
-        df = pd.read_excel(path)
-    else:
-        df = pd.DataFrame(json.loads(Path(path).read_text()))
+    path = str(path)
+    df = (
+        pd.read_csv(path, on_bad_lines="skip", engine="python")
+        if path.endswith(".csv")
+        else pd.read_excel(path)
+    )
 
-    print(f"[LOAD] Parsed {len(df)} documents.")
-
-    # Normalize columns from different dataset formats
-    return [
-        {
-            "doc_id": row.get("Accession") or row.get("StudyId") or row.get("id"),
-            "title": row.get("Study Name") or row.get("StudyName") or row.get("title") or "",
-            "abstract": row.get("Description") or row.get("abstract") or "",
-            "permalink": row.get("Permalink") or "",
-        }
-        for _, row in df.iterrows()
-    ]
+    rows = []
+    for _, row in df.iterrows():
+        rows.append(
+            {
+                "doc_id": row.get("Accession") or row.get("StudyId"),
+                "title": row.get("Study Name") or "",
+                "abstract": row.get("Description") or "",
+                "permalink": row.get("Permalink") or "",
+            }
+        )
+    return rows
 
 
 def chunk_document_to_nodes(doc: Dict[str, Any]) -> List[Node]:
-    """
-    Converts a document (title + abstract) into a single Node object.
-    If the document text is empty, returns an empty list.
-    """
-    title = (doc.get("title") or "").strip()
-    abstract = (doc.get("abstract") or "").strip()
-    text = (title + ". " + abstract).strip().strip(". ")
-
+    text = f"{doc['title']}. {doc['abstract']}".strip()
     if not text:
         return []
 
@@ -173,8 +219,8 @@ def chunk_document_to_nodes(doc: Dict[str, Any]) -> List[Node]:
         Node(
             properties={
                 "page_content": text,
-                "doc_id": doc.get("doc_id"),
-                "title": title,
+                "doc_id": doc["doc_id"],
+                "title": doc["title"],
                 "permalink": doc.get("permalink", ""),
             }
         )
@@ -182,175 +228,107 @@ def chunk_document_to_nodes(doc: Dict[str, Any]) -> List[Node]:
 
 
 def build_nodes(rows: List[Dict[str, Any]]) -> List[Node]:
-    """Convert a list of document rows into a flat list of Node objects."""
     return [n for r in rows for n in chunk_document_to_nodes(r)]
 
 
-# ----------------------------------------------------------------------
-# Graph enrichment: Named Entity Recognition (NER) + relationships
-# ----------------------------------------------------------------------
-
+# --------------------------------------------------------
+# KG TRANSFORMS
+# --------------------------------------------------------
 async def enrich_graph_with_transforms(nodes: List[Node], outdir: Path):
-    """
-    Adds semantic enrichment to the knowledge graph:
-    - Extracts biomedical entities using SciSpacy.
-    - Builds entity-based similarity relationships (Jaccard).
-    - Marks cross-document edges.
-    """
-
-    outdir.mkdir(parents=True, exist_ok=True)
     kg = KnowledgeGraph(nodes=nodes)
+    outdir.mkdir(parents=True, exist_ok=True)
 
-    # --- Named Entity Recognition ---
-    from utils.scispacyNER import SciSpacyNERExtractor
-    from utils.jaccardTFIDF import WeightedJaccardBuilder
-    from utils.centroid_cluster_builder import ClusterCentroidBuilder
-    from utils.pmi_builder import PMIRelationshipBuilder
-    from utils.hybrid_relation_builder import HybridRelationshipBuilder
+    # --- NER ---
     ner = SciSpacyNERExtractor()
-    extractor_block = Parallel(ner)
+    maybe = apply_transforms(kg, [Parallel(ner)])
+    if asyncio.iscoroutine(maybe):
+        await maybe
 
-    maybe_coro = apply_transforms(kg, [extractor_block])
-    if inspect.isawaitable(maybe_coro):
-        await maybe_coro
+    # --- Clean entities ---
+    STOP = {"the", "a", "an", "on", "in", "of", "to", "and"}
+    for n in kg.nodes:
+        ents = [
+            e.strip().lower()
+            for e in n.properties.get("entities", [])
+            if e.lower() not in STOP
+        ]
+        n.properties["entities"] = ents
+        n.type = NodeType.CHUNK if ents else NodeType.DOCUMENT
 
-    # --- Clean extracted entities ---
-    STOP_ENTS = {"the","this","that","for","of","in","to","and","on","by","from","with"}
-    def clean_entity(e: str):
-        e = e.strip().strip(".").strip(":")
-        return e if e and e.lower() not in STOP_ENTS else ""
-
-    for node in kg.nodes:
-        ents = node.properties.get("entities", [])
-        node.properties["entities"] = [clean_entity(e) for e in ents if clean_entity(e)]
-        node.type = NodeType.CHUNK if node.properties["entities"] else NodeType.DOCUMENT
-
-    # --- Build similarity relationships ---
-    jaccard_transforms = [
-        WeightedJaccardBuilder(property_name="entities", new_property_name="weighted_jaccard_similarity",  threshold=0.5),
-        JaccardSimilarityBuilder(property_name="entities", new_property_name="entity_jaccard_similarity", threshold=0.5),
-        ClusterCentroidBuilder(property_name="entities", new_property_name="centroid_similarity"),
-        # PMIRelationshipBuilder(property_name="entities"),
-        # HybridRelationshipBuilder(property_name="entities")
-
-        # JaccardSimilarityBuilder(property_name="keyphrases", new_property_name="keyphrase_jaccard_similarity"),
+    # --- Similarity & centroid transforms ---
+    transforms = [
+        WeightedJaccardBuilder("entities", "weighted_jaccard_similarity", 0.5),
+        JaccardSimilarityBuilder("entities", "entity_jaccard_similarity", 0.5),
+        ClusterCentroidBuilder("entities", "centroid_similarity"),
     ]
-    maybe_coro = apply_transforms(kg, jaccard_transforms)
-    if inspect.isawaitable(maybe_coro):
-        await maybe_coro
 
-    # --- Label cross-document edges ---
-    for r in kg.relationships:
-        src_doc, tgt_doc = r.source.properties.get("doc_id"), r.target.properties.get("doc_id")
-        r.properties["cross_doc"] = src_doc != tgt_doc
+    maybe = apply_transforms(kg, transforms)
+    if asyncio.iscoroutine(maybe):
+        await maybe
 
-
-    print(f"[INFO] Cross-abstract edges: {sum(r.properties['cross_doc'] for r in kg.relationships)} / {len(kg.relationships)} total")
     return kg
 
 
-
-# ----------------------------------------------------------------------
-# Main Async Routine
-# ----------------------------------------------------------------------
-
+# --------------------------------------------------------
+# MAIN EXECUTION
+# --------------------------------------------------------
 async def _amain(args):
-    """Core async pipeline to build KG and generate the testset."""
 
-    # --- Load and preprocess data ---
+    # --- Load + Build Nodes ---
     rows = load_abstracts(args.input)
     nodes = build_nodes(rows)
 
-
-    # --- Enrich KG with NER + relationships ---
+    # --- Build KG ---
     kg = await enrich_graph_with_transforms(nodes, Path(args.outdir))
 
-    print(f"Total nodes: {len(kg.nodes)}")
-    print(f"Total relationships: {len(kg.relationships)}")
+    # --- LLM + Embeddings ---
+    llm = llm_factory("gpt-4o-mini")
 
-    # Preview first few relationships
-    for i, r in enumerate(kg.relationships[:5]):
-        print(f"Edge {i}: {r.source.properties.get('title')} ↔ {r.target.properties.get('title')}")
-        print(f"  Properties: {r.properties}")
+    from openai import OpenAI
+    client = OpenAI()
+    embeddings = OpenAIEmbeddings(client=client, model="text-embedding-3-small")
 
-    # --- Initialize LLM and embeddings for testset generation ---
-    from ragas.testset import TestsetGenerator
-    from ragas.llms import LangchainLLMWrapper
-    from ragas.embeddings import OpenAIEmbeddings
-    from langchain_openai import ChatOpenAI
-    import openai
-    from ragas.testset.persona import Persona
-
-    # Wrap GPT-4o-mini for LLM reasoning
-    generator_llm = LangchainLLMWrapper(ChatOpenAI(model="gpt-4o-mini"))
-    openai_client = openai.OpenAI()
-    generator_embeddings = OpenAIEmbeddings(client=openai_client, model="text-embedding-3-small")
-
-    # Define personas (roles) for generating diverse questions
     personas = [
-        Persona(name="Clinician", role_description="Medical professional interpreting research findings."),
-        Persona(name="Data Scientist", role_description="Interested in modeling and computational aspects."),
-        Persona(name="Graduate Student", role_description="Learning research methods."),
+        Persona(name="Clinician", role_description="Interprets biomedical findings."),
+        Persona(name="Data Scientist", role_description="Understands modeling."),
+        Persona(name="Graduate Student", role_description="Learning research."),
     ]
 
-    # Use our custom multi-hop synthesizer for generating queries
-    query_distribution = [(MyMultiHopQuery(documents=nodes, llm=generator_llm), 1.0)]
+    # --- Query Distribution ---
+    query_distribution = [
+        (MySingleHopQuery(kg=kg, llm=llm), 0.4),
+        (MyMultiHopQuery(documents=nodes, llm=llm), 0.6),
+    ]
 
-    # --- Generate the RAGAS-style testset ---
+    # --- Generate Testset ---
     generator = TestsetGenerator(
-        llm=generator_llm,
-        embedding_model=generator_embeddings,
+        llm=llm,
+        embedding_model=embeddings,
         knowledge_graph=kg,
         persona_list=personas,
     )
 
-    print("[INFO] Generating testset (multi-hop across relation types)...")
-    testset = generator.generate(testset_size=args.n_samples, query_distribution=query_distribution)
+    print("[INFO] Generating RAGAS Testset...")
+    testset = generator.generate(
+        args.n_samples,
+        query_distribution=query_distribution,
+    )
+
     df = testset.to_pandas()
+    out = Path(args.outdir)
+    out.mkdir(parents=True, exist_ok=True)
 
-    # --- Save testset to output directory ---
-    outdir = Path(args.outdir)
-    outdir.mkdir(parents=True, exist_ok=True)
-    df.to_json(outdir / "ragas_testset.jsonl", orient="records", lines=True)
-    print(f"[TESTSET] total samples={len(df)} → {outdir/'ragas_testset.jsonl'}")
+    df.to_json(out / "ragas_testset.jsonl", orient="records", lines=True)
+    print(f"[DONE] Wrote {len(df)} samples → {out/'ragas_testset.jsonl'}")
 
-    # --- Optionally save per-relation-type subsets ---
-    synth = query_distribution[0][0]
-    if hasattr(synth, "_scenarios_by_type"):
-        for rel_type, scenarios in synth._scenarios_by_type.items():
-            subpath = outdir / f"ragas_testset_{rel_type}.jsonl"
-            subset = []
-            for s in scenarios:
-                record = s.model_dump()
-                record["nodes"] = [
-                    {
-                        "doc_id": n.properties.get("doc_id"),
-                        "title": n.properties.get("title"),
-                        "permalink": n.properties.get("permalink"),
-                        "entities": n.properties.get("entities", [])[:10],
-                    }
-                    for n in getattr(s, "nodes", [])
-                ]
-                subset.append(record)
-
-            with open(subpath, "w") as f:
-                for row in subset:
-                    f.write(json.dumps(row, default=safe_json) + "\n")
-
-            print(f"[SAVE] {rel_type}: {len(subset)} samples → {subpath}")
-
-
-# ----------------------------------------------------------------------
-# Entry point for CLI
-# ----------------------------------------------------------------------
 
 def main():
-    """Command-line interface for running the full pipeline."""
-    p = argparse.ArgumentParser(description="Generate RAGAS-style testset from biomedical abstracts.")
-    p.add_argument("--input", required=True, help="Path to input CSV/JSON/Excel file.")
-    p.add_argument("--outdir", required=True, help="Output directory for testset files.")
-    p.add_argument("--n-samples", type=int, default=40, help="Number of samples to generate.")
+    p = argparse.ArgumentParser()
+    p.add_argument("--input", required=True)
+    p.add_argument("--outdir", required=True)
+    p.add_argument("--n-samples", type=int, default=40)
     args = p.parse_args()
+
     asyncio.run(_amain(args))
 
 
