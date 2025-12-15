@@ -5,9 +5,10 @@ import config as app_config
 from chains.kg_chain import KGChain
 from chains.question_lookup_chain import QuestionLookupChain
 from models.user_question import Question
-from typing import Dict, List
+from typing import Dict, List, Optional
 from langchain_core.prompts.prompt import PromptTemplate
 import xml.etree.ElementTree as ET
+import re
 from langchain_core.runnables import (
     RunnableParallel,
     RunnableLambda,
@@ -47,6 +48,41 @@ class QVKGChain:
             "user_intent": lambda x: x.get("user_intent", {})
         })
 
+
+    @staticmethod
+    def _safe_parse_xml(xml_string: str) -> Optional[ET.Element]:
+        """
+        Helper: Sanitizes string and attempts to parse XML safely.
+        Handles unescaped chars and missing root elements.
+        """
+        if not xml_string or not xml_string.strip():
+            return None
+
+        # 1. Sanitize: Remove illegal XML control characters
+        # (characters like vertical tabs that LLMs sometimes hallucinate)
+        xml_string = re.sub(
+            u'[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u10000-\u10FFFF]+', 
+            '', 
+            xml_string
+        )
+
+        # 2. Sanitize: Fix unescaped ampersands (e.g., "R&D" -> "R&amp;D")
+        # Looks for & NOT followed by valid entity or hash
+        xml_string = re.sub(r'&(?!(?:amp|lt|gt|apos|quot|#\d+|#x[0-9a-fA-F]+);)', '&amp;', xml_string)
+
+        try:
+            # Attempt 1: Parse directly
+            return ET.fromstring(xml_string)
+        except ET.ParseError:
+            try:
+                # Attempt 2: It might lack a single root element. Wrap it.
+                # e.g., input was "<study>...</study><study>...</study>"
+                return ET.fromstring(f"<root>{xml_string}</root>")
+            except ET.ParseError:
+                # If it still fails, the XML is too broken to save without 'lxml'
+                print(f"Warning: Failed to parse XML content. Skipping block.")
+                return None
+
     @staticmethod
     def combine_xml_outputs(
             kg_context: str,
@@ -60,9 +96,8 @@ class QVKGChain:
         study_data: Dict[str, str] = {}
 
         # --- 1. Process the rich content string first ---
-        if kg_context.strip():
-            # No pre-processing needed! We can parse it directly.
-            root = ET.fromstring(kg_context)
+        if kg_context.strip():            
+            root = QVKGChain._safe_parse_xml(kg_context)
             for study_element in root.findall('study'):
                 study_id = study_element.get('id')
                 if study_id:
@@ -70,9 +105,8 @@ class QVKGChain:
                     study_data[study_id] = study_block
 
         # --- 2. Process the simple content string ---
-        if qv_context.strip():
-            # No pre-processing needed here either.
-            root = ET.fromstring(qv_context)
+        if qv_context.strip():            
+            root = QVKGChain._safe_parse_xml(qv_context)
             for study_element in root.findall('study'):
                 study_id = study_element.get('id')
                 # Only add if this study_id has not been seen before
