@@ -179,7 +179,20 @@ class MyMultiHopQuery(MultiHopQuerySynthesizer):
                 style="Perfect grammar",
                 length="long",
                 persona=persona,
+                extra_info={
+                        "doc_ids": [
+                            d1.properties.get("doc_id"),
+                            d2.properties.get("doc_id")
+                        ],
+                        "titles": [t1, t2],
+                        "entities_A": ents1,
+                        "entities_B": ents2,
+                        "edge_type": key,
+                        "edge_properties": props,
+                }
             )
+
+
 
             scenarios.append(scenario)
 

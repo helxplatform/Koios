@@ -123,7 +123,7 @@ class MyMultiHopQuery(MultiHopQuerySynthesizer):
             persona = persona[0]
 
         docs = docs if isinstance(docs, list) else self.documents
-        n_samples = n_samples or 20
+        n_samples = n_samples or 50
 
         scenarios = []
 
