@@ -56,7 +56,7 @@ python src/qvkg_app_server.py
 # Serves on port 8005
 ```
 
-### API Endpoints
+### REST API Endpoints
 
 #### Agent Server
 - `POST /agent/invoke` - Full agent routing with intent analysis
