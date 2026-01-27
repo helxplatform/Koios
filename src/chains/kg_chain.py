@@ -15,7 +15,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 import asyncio
 
 import config
-from util.study_data import get_study_data
+from util.study_context import StudyContextProvider
 from util.chat_history_util import format_chat_history
 from models.user_question import Question
 
@@ -43,6 +43,7 @@ class KGChain:
         self.CONCEPT_EXTRACTION_PROMPT = self._get_system_prompt("CONCEPT_EXTRACTION_PROMPT")
         self.ANSWER_GENERATION_PROMPT = self._create_answer_generation_prompt("ANSWER_GENERATION_PROMPT_KG_APP")
         self.graph = RedisGraphDB(config)
+        self.study_context_provider = StudyContextProvider(config)
         self.cypher_query = lambda concept_id, limit: f"""
             MATCH (query_concept {{id: "{concept_id}"}})-[r1]->(variable:`biolink.StudyVariable`)-[r2]->(study:`biolink.Study`)
             RETURN
@@ -213,16 +214,31 @@ class KGChain:
             lambda x: ', '.join(set([vid.split('.')[0] for vid in x.split(', ')]))
         )
 
-        # add study description to the data frame
-        summary_data_frame[['study_name', 'permalink', 'description']] = summary_data_frame['study_id'].apply(
-            lambda x: pd.Series(
-                # this is just using the file but instead of matching on full study id its using the first part.
-                get_study_data(x,
-                               lambda in_file, current_study_id:
-                               in_file.split('.')[0] == current_study_id.split('.')[0],
-                               exclude_keys=["study_id"]
-                               )[0]
-            ))
+        # add study description from FalkorDB (batch fetch for efficiency)
+        study_ids = summary_data_frame['study_id'].tolist()
+        study_contexts = self.study_context_provider.get_studies(study_ids)
+
+        def get_study_info(study_id):
+            base_id = study_id.split('.')[0]
+            ctx = study_contexts.get(base_id)
+            if ctx:
+                return pd.Series({
+                    'study_name': ctx.study_name,
+                    'permalink': ctx.permalink,
+                    'description': ctx.abstract,
+                    'participant_count': ctx.participant_count,
+                    'study_design': ctx.study_design
+                })
+            return pd.Series({
+                'study_name': '',
+                'permalink': '',
+                'description': '',
+                'participant_count': 0,
+                'study_design': ''
+            })
+
+        summary_data_frame[['study_name', 'permalink', 'description', 'participant_count', 'study_design']] = \
+            summary_data_frame['study_id'].apply(get_study_info)
 
         # filter empty study names,
         summary_data_frame = summary_data_frame[summary_data_frame['study_name'] != ""]
@@ -242,7 +258,9 @@ class KGChain:
                                                    'variable_info',
                                                    'number_of_concepts',
                                                    'study_name',
-                                                   'permalink']]
+                                                   'permalink',
+                                                   'participant_count',
+                                                   'study_design']]
 
         # ??? Might want to dig into this more ...
         top_results = projected_data_frame.head(10)
@@ -257,16 +275,24 @@ class KGChain:
     @staticmethod
     def _format_to_documents_for_llm_context(rows):
         """
-        Formats document for llm context
+        Formats document for llm context with participant count and study design
         :param rows:
         :return:
         """
         docs = []
         for _, row in rows.iterrows():
-            raw_desc = row['description']
+            raw_desc = row['description'] if row['description'] else ""
             escaped_desc = html.escape(raw_desc)
+            participant_count = row.get('participant_count', 0)
+            study_design = html.escape(row.get('study_design', '') or '')
+
             doc = {
-                "page_content": f"<abstract>{escaped_desc}</abstract><variables>\n{row['variable_info']}</variables>",
+                "page_content": (
+                    f"<study_design>{study_design}</study_design>"
+                    f"<participant_count>{participant_count}</participant_count>"
+                    f"<abstract>{escaped_desc}</abstract>"
+                    f"<variables>\n{row['variable_info']}</variables>"
+                ),
                 "metadata": {
                     "study_id": row['study_id'],
                     "study_name": row['study_name'],
@@ -276,7 +302,7 @@ class KGChain:
             docs.append(doc)
         docs_str = [
             (f'<study id="{doc["metadata"]["study_id"]}">'
-             f'<title>{doc["metadata"]["study_name"]} ({doc['metadata']["study_id"]}):</title>'
+             f'<title>{doc["metadata"]["study_name"]} ({doc["metadata"]["study_id"]}):</title>'
              f'{doc["page_content"]}'
              f'</study>')
             for doc in docs

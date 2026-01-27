@@ -24,6 +24,7 @@ from models.user_question import Question
 from qdrant_client import QdrantClient, async_qdrant_client
 from util.chat_history_util import format_chat_history
 from util.llm_helper import LLMFactory
+from util.study_context import StudyContextProvider
 
 
 class QuestionLookupChain:
@@ -43,6 +44,8 @@ class QuestionLookupChain:
         self.langfuse_client = Langfuse(secret_key=config.LANGFUSE_SECRET_KEY,
                                         public_key=config.LANGFUSE_PUBLIC_KEY,
                                         host=config.LANGFUSE_HOST)
+        # Study context provider for fetching study metadata from FalkorDB
+        self.study_context_provider = StudyContextProvider(config)
 
         #PROMPTS
         self.REPHRASE_PROMPT = self._get_prompt_from_langfuse("REPHRASE_PROMPT")
@@ -79,7 +82,7 @@ class QuestionLookupChain:
         retrival_chain = (rephrase_branch |
                             self.data_store.as_retriever(search_kwargs=lookup_parameters)
                                 .with_config(run_name="qdrant_lookup") |
-                            self._combine_documents)
+                            RunnableLambda(self._combine_documents))
         return retrival_chain.with_config(run_name='retrieve_documents')
 
     def as_generative_chain(self, lookup_parameters=None) -> Runnable:
@@ -126,23 +129,65 @@ class QuestionLookupChain:
             ("user", "{input}")
         ])
 
-    @staticmethod
-    def _combine_documents(docs, document_separator="\n\n", *args, **kwargs):
-        docs_seen = []
-        doc_strings = []
-        document_prompt = PromptTemplate.from_template(template="{page_content}")
-        for document in docs:
-            if document.metadata['study_id'] not in docs_seen:
-                if not document.page_content:
-                    continue
-                document.page_content = json.loads(document.page_content)
-                raw_page_content = document.page_content['abstract']
-                safe_page_content = html.escape(raw_page_content)
+    def _combine_documents(self, docs, document_separator="\n\n"):
+        """
+        Combines documents from Qdrant with study metadata from FalkorDB.
 
-                doc_strings.append(f'<study id="{document.metadata['study_id']}">'
-                                   f'<title>{document.page_content['title']}</title>'
-                                   f'<abstract>{safe_page_content}</abstract></study>')
-                docs_seen.append(document.metadata['study_id'])
+        Qdrant documents have:
+        - question_id: "{study_id}_{suffix}" (e.g., "phs000007.v34.p15_16_1")
+        - question: the pre-generated question text
+
+        We extract study_ids and fetch full metadata from FalkorDB.
+        """
+        # Extract unique study_ids from question_ids
+        study_ids_seen = set()
+        study_id_to_questions = {}
+
+        for document in docs:
+            # Handle both old format (metadata.study_id) and new format (question_id in payload)
+            if hasattr(document, 'metadata') and 'study_id' in document.metadata:
+                study_id = document.metadata['study_id']
+            elif hasattr(document, 'metadata') and 'question_id' in document.metadata:
+                # Extract study_id from question_id (format: phs000007.v34.p15_16_1)
+                question_id = document.metadata['question_id']
+                # Split by underscore and take parts that look like study_id
+                parts = question_id.split('_')
+                study_id = parts[0] if parts else question_id
+            else:
+                continue
+
+            base_study_id = study_id.split('.')[0]
+            if base_study_id not in study_ids_seen:
+                study_ids_seen.add(base_study_id)
+                study_id_to_questions[base_study_id] = []
+
+            # Store the question for context
+            question_text = getattr(document, 'page_content', '') or ''
+            if question_text and base_study_id in study_id_to_questions:
+                study_id_to_questions[base_study_id].append(question_text)
+
+        if not study_ids_seen:
+            return "<studies></studies>"
+
+        # Batch fetch study metadata from FalkorDB
+        study_contexts = self.study_context_provider.get_studies(list(study_ids_seen))
+
+        # Build XML output
+        doc_strings = []
+        for base_study_id, ctx in study_contexts.items():
+            safe_abstract = html.escape(ctx.abstract) if ctx.abstract else ""
+            safe_name = html.escape(ctx.study_name) if ctx.study_name else ""
+            study_design = html.escape(ctx.study_design) if ctx.study_design else ""
+
+            doc_strings.append(
+                f'<study id="{ctx.study_id}">'
+                f'<title>{safe_name}</title>'
+                f'<study_design>{study_design}</study_design>'
+                f'<participant_count>{ctx.participant_count}</participant_count>'
+                f'<abstract>{safe_abstract}</abstract>'
+                f'</study>'
+            )
+
         joined_docs = document_separator.join(doc_strings)
         return f"<studies>{joined_docs}</studies>"
 

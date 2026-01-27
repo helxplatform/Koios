@@ -15,6 +15,7 @@ from langchain_core.runnables import (
     RunnableBranch
 )
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import AIMessage
 from langfuse import Langfuse
 from langchain_core.output_parsers import StrOutputParser
 from guardrails.input_guard import InputGuard
@@ -147,7 +148,7 @@ class QVKGChain:
                         "context": x["context"],
                         "chat_history": x["chat_history"],
                         "user_persona": x["user_persona"]
-                    }) | RunnableLambda(self._limit_context_tokens) | self.COMBINED_ANSWER_PROMPT | self.llm.with_config(name="answer_generation") | StrOutputParser(),
+                    }) | RunnableLambda(self._limit_context_tokens) | self.COMBINED_ANSWER_PROMPT | self.llm.with_config(name="answer_generation") | StrOutputParser() | RunnableLambda(lambda content: AIMessage(content=content, name="qvkg_chain")),
                     "extra": RunnableLambda(lambda x: {"knowledge_graph": x["kg_extra"].get("knowledge_graph", {})}),
                     "prompt": RunnableLambda(lambda x: {
                         "input": x["input"],
@@ -158,7 +159,7 @@ class QVKGChain:
                 })
             ),
             RunnableLambda(lambda x: {
-                "output": "No studies or relevant information were found to answer the query.",
+                "output": AIMessage(content="No studies or relevant information were found to answer the query.", name="qvkg_chain"),
                 "extra": {},
                 "prompt": RunnableLambda(lambda x: {
                     "input": x["input"],
